@@ -1,0 +1,31 @@
+# Farm in Pocket - 温度・湿度監視モジュール設定ファイル
+
+# センサー設定
+sensor_type: DHT22          # センサータイプ (DHT22 / DHT11 / DS18B20)
+gpio_pin: 4                 # GPIOピン番号
+
+# 測定設定
+interval: 60                # 測定間隔（秒）
+
+# 補正値
+temp_offset: 0.0            # 温度補正値（℃）
+humidity_offset: 0.0        # 湿度補正値（%）
+
+# アラート設定
+alert_temp_high: 35.0       # 高温アラート閾値（℃）
+alert_temp_low: 5.0         # 低温アラート閾値（℃）
+alert_humidity_high: 80.0   # 高湿度アラート閾値（%）
+alert_humidity_low: 30.0    # 低湿度アラート閾値（%）
+
+# データ保存設定
+data_retention_days: 90     # データ保存期間（日）
+save_to_file: true          # ファイルへの保存を有効化
+
+# API設定
+api_enabled: true           # REST APIを有効化
+api_port: 8001              # APIポート番号
+
+# ログ設定
+log_level: INFO             # ログレベル (DEBUG / INFO / WARNING / ERROR)
+log_to_console: true        # コンソールへのログ出力
+log_to_file: true           # ファイルへのログ出力

@@ -1,0 +1,83 @@
+{
+  "name": "farminpocket-temp",
+  "version": "1.0.0",
+  "description": "温度・湿度監視モジュール - DHT22/DHT11/DS18B20センサーに対応",
+  "author": "Farm in Pocket Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/kako-jun/farm-in-pocket",
+  "dependencies": {
+    "hardware": [
+      "DHT22",
+      "DHT11",
+      "DS18B20"
+    ],
+    "software": [
+      "python:3.9",
+      "Adafruit-DHT",
+      "w1thermsensor"
+    ]
+  },
+  "config": {
+    "sensor_type": {
+      "type": "string",
+      "default": "DHT22",
+      "enum": ["DHT22", "DHT11", "DS18B20"],
+      "description": "使用するセンサータイプ"
+    },
+    "gpio_pin": {
+      "type": "integer",
+      "default": 4,
+      "description": "センサーを接続するGPIOピン番号"
+    },
+    "interval": {
+      "type": "integer",
+      "default": 60,
+      "description": "測定間隔（秒）"
+    },
+    "temp_offset": {
+      "type": "float",
+      "default": 0.0,
+      "description": "温度補正値（℃）"
+    },
+    "humidity_offset": {
+      "type": "float",
+      "default": 0.0,
+      "description": "湿度補正値（%）"
+    },
+    "alert_temp_high": {
+      "type": "float",
+      "default": 35.0,
+      "description": "高温アラート閾値（℃）"
+    },
+    "alert_temp_low": {
+      "type": "float",
+      "default": 5.0,
+      "description": "低温アラート閾値（℃）"
+    },
+    "alert_humidity_high": {
+      "type": "float",
+      "default": 80.0,
+      "description": "高湿度アラート閾値（%）"
+    },
+    "alert_humidity_low": {
+      "type": "float",
+      "default": 30.0,
+      "description": "低湿度アラート閾値（%）"
+    }
+  },
+  "ports": {
+    "http": 8001
+  },
+  "volumes": [
+    "/data/temp:/app/data"
+  ],
+  "environment": {
+    "LOG_LEVEL": "INFO"
+  },
+  "healthcheck": {
+    "test": ["CMD", "python", "healthcheck.py"],
+    "interval": "30s",
+    "timeout": "3s",
+    "retries": 3
+  }
+}
