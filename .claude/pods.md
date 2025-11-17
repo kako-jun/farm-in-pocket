@@ -388,6 +388,145 @@ farminpocket-<機能名>
 
 ---
 
+## プラットフォーム方針
+
+### 公式サポート：Raspberry Pi のみ
+
+Farm in Pocket は **Raspberry Pi を標準プラットフォーム** として設計されています。
+
+#### なぜ Raspberry Pi？
+
+1. ✅ **Web UI（FastAPI + React）を実現可能**
+   - Linuxベースのため、Webサーバーが動く
+   - Arduinoではブラウザベースの管理画面が作れない
+
+2. ✅ **Dockerベースの設計**
+   - ポッドのプラグイン方式はDockerコンテナ前提
+   - Yocto LinuxでカスタムOS配布
+
+3. ✅ **単一OSイメージですべてのポッドに対応**
+   - SDカードを焼くだけで全機能が使える
+   - 設定不要（ノーコンフィグ）
+
+4. ✅ **カメラ・音声が簡単**
+   - Pi Camera Module v2: CSI接続で自動認識
+   - 音声再生: 3.5mmジャック標準装備
+
+#### 推奨モデル
+
+| ポッド | 推奨モデル | 価格 | 理由 |
+|--------|-----------|------|------|
+| atmosphere | Raspberry Pi Zero W | ¥1,500 | 低消費電力（1.2W）、低コスト |
+| water | Raspberry Pi Zero W | ¥1,500 | GPIO制御のみで十分 |
+| guard | Raspberry Pi Zero W | ¥1,500 | バッテリー駆動対応 |
+| camera | Raspberry Pi 4 Model B (2GB) | ¥6,000 | カメラ処理に性能が必要 |
+| gateway | （既存Piに同居） | ¥0 | ソフトウェアのみ |
+
+**全ポッド構成の初期費用**:
+- Raspberry Pi: ¥10,500（Zero W × 3 + Pi 4 × 1）
+- センサー類: ¥8,400
+- **合計**: ¥18,900
+
+---
+
+### Arduino版（コミュニティサポート）
+
+Arduino（Uno、Nano等）でポッドを作ることも可能ですが、**公式サポート対象外**です。
+
+#### Arduino版の制約
+
+- ❌ Web UIなし（管理画面が作れない）
+- ❌ Dockerなし（ポッドのプラグイン方式が使えない）
+- ❌ カメラ対応困難（USBカメラのドライバ問題）
+- ❌ 音声再生困難（MP3デコーダが必要）
+- ✅ 消費電力が少ない（0.2W程度）
+- ✅ 価格が安い（¥2,000程度）
+
+#### Arduino版の作り方（コミュニティ向けガイド）
+
+シンプルなセンサー読み取りポッド（例: atmosphere）であれば、Arduinoでも実装可能です。
+
+**基本方針**:
+1. センサーからデータを取得
+2. シリアル通信またはHTTPでRaspberry Piに送信
+3. Raspberry Pi側のWeb UIでデータを表示
+
+**実装例（farminpocket-atmosphere on Arduino）**:
+
+```cpp
+// Arduino Uno + BME280 + BH1750
+#include <Wire.h>
+#include <Adafruit_BME280.h>
+#include <BH1750.h>
+
+Adafruit_BME280 bme;
+BH1750 lightMeter;
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+
+  if (!bme.begin(0x76)) {
+    Serial.println("BME280 not found!");
+  }
+
+  if (!lightMeter.begin()) {
+    Serial.println("BH1750 not found!");
+  }
+}
+
+void loop() {
+  float temp = bme.readTemperature();
+  float humidity = bme.readHumidity();
+  float pressure = bme.readPressure() / 100.0F;
+  uint16_t lux = lightMeter.readLightLevel();
+
+  // JSONフォーマットで出力
+  Serial.print("{\"temperature\":");
+  Serial.print(temp);
+  Serial.print(",\"humidity\":");
+  Serial.print(humidity);
+  Serial.print(",\"pressure\":");
+  Serial.print(pressure);
+  Serial.print(",\"light\":");
+  Serial.print(lux);
+  Serial.println("}");
+
+  delay(60000); // 60秒間隔
+}
+```
+
+**Raspberry Pi側で受信**:
+```python
+import serial
+import json
+
+ser = serial.Serial('/dev/ttyUSB0', 9600)
+
+while True:
+    line = ser.readline().decode('utf-8').strip()
+    data = json.loads(line)
+    print(data)
+    # データベースに保存、Web UIで表示
+```
+
+**manifest.json（Arduino版）**:
+```json
+{
+  "name": "farminpocket-atmosphere-arduino",
+  "version": "1.0.0",
+  "platform": "arduino",
+  "board": "arduino:avr:uno",
+  "requires_hub": true,
+  "hub_connection": "serial",
+  "description": "Arduino版 atmosphereポッド（コミュニティ版）"
+}
+```
+
+このように、ArduinoはRaspberry Piに**データを送るセンサーノード**として使うことが可能です。コミュニティが独自に実装・公開することを歓迎します。
+
+---
+
 ## ポッド間通信
 
 ### 方法1: REST API
