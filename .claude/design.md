@@ -19,7 +19,7 @@
 │  │ ダッシュ     │  │ モジュール   │  │ システム     │             │
 │  │ ボード      │  │ 管理        │  │ 設定        │             │
 │  └─────────────┘  └─────────────┘  └─────────────┘             │
-│  (Vue.js 3 + Tailwind CSS)                                      │
+│  (React + Tailwind CSS)                                         │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ REST API
                             ↓
@@ -107,18 +107,36 @@ meta-farminpocket/
 #### 技術スタック
 
 **フロントエンド**:
-- Vue.js 3 (Composition API)
-- Vue Router 4
-- Pinia (状態管理)
+- React 18
+- React Router 6
+- Context API または Zustand (状態管理)
 - Axios (HTTP通信)
-- Chart.js (グラフ表示)
+- Chart.js または Recharts (グラフ表示)
 - Tailwind CSS (スタイリング)
+- Vite (ビルドツール)
 
 **バックエンド**:
-- Flask または FastAPI
+- FastAPI (Python 3.9+)
 - SQLAlchemy (ORM)
 - Docker SDK for Python
 - APScheduler (定期実行)
+
+#### React採用の理由
+
+**Vue.js 3 から React 18 への変更理由**:
+1. より広範なコミュニティとエコシステム
+2. TypeScript との統合が優れている
+3. 農業IoT分野でのReact採用事例が多い
+4. コミュニティが独自UIを作る際の参考にしやすい
+
+**状態管理の選択**:
+- シンプルな構成なら **Context API** で十分
+- 複雑化する場合は **Zustand**（軽量、学習コスト低）
+- Redux は避ける（オーバースペック）
+
+**グラフライブラリの選択**:
+- Chart.js: Vue.js版から引き続き利用可能
+- Recharts: React向けに最適化、宣言的で使いやすい
 
 #### ディレクトリ構成
 
@@ -145,26 +163,27 @@ core/web-ui/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── main.js
-│   │   ├── App.vue
+│   │   ├── main.jsx
+│   │   ├── App.jsx
 │   │   ├── router/
-│   │   │   └── index.js
-│   │   ├── stores/
-│   │   │   ├── system.js
-│   │   │   └── modules.js
-│   │   ├── views/
-│   │   │   ├── Dashboard.vue
-│   │   │   ├── ModuleDetail.vue
-│   │   │   ├── ModuleManage.vue
-│   │   │   ├── Settings.vue
-│   │   │   └── Logs.vue
+│   │   │   └── index.jsx
+│   │   ├── store/
+│   │   │   ├── systemStore.js     # Zustand store
+│   │   │   └── modulesStore.js
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── ModuleDetail.jsx
+│   │   │   ├── ModuleManage.jsx
+│   │   │   ├── Settings.jsx
+│   │   │   └── Logs.jsx
 │   │   └── components/
-│   │       ├── ModuleCard.vue
-│   │       ├── StatusBadge.vue
-│   │       └── Chart.vue
+│   │       ├── ModuleCard.jsx
+│   │       ├── StatusBadge.jsx
+│   │       └── Chart.jsx
 │   ├── public/
 │   ├── package.json
-│   └── vite.config.js
+│   ├── vite.config.js
+│   └── tailwind.config.js
 └── docker-compose.yml
 ```
 
