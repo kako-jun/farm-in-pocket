@@ -276,44 +276,84 @@ Farm in Pocketでは、各機能を「**ポッド（Pod）**」と呼びます�
 
 **役割**: クラウド連携・データ集約・通信
 
-**対応プロトコル**:
-- Wi-Fi
-- LoRaWAN
-- MQTT
-- HTTP/HTTPS（REST API）
+**推奨ネットワーク（ノーコンフィグ対応）**:
+
+#### 1. Wi-Fi（推奨、ゼロコスト）
+- Raspberry Pi標準搭載
+- 自宅の既存Wi-Fiルーターに接続
+- 追加コスト: ¥0
+- 設定: SSID + パスワードのみ
+
+#### 2. 4G LTE（Wi-Fiが届かない場合）
+- **USB 4G LTE モデム**（約3000円）
+  - 推奨: Huawei E3372、ZTE MF823など
+  - Raspberry PiのUSBポートに差し込むだけ
+- **格安データSIM**（月額500〜1000円）
+  - IIJmio データプラン: 2GB ¥740/月
+  - OCNモバイルONE: 3GB ¥858/月
+  - mineo: 5GB ¥1,265/月
+  - 家族契約のシェアプランで追加可能
+- APN自動設定（主要キャリア対応）
+
+**なぜこの構成？**
+- ✅ Wi-Fiは既存ネットワークを利用（ゼロコスト）
+- ✅ 格安SIMは家族契約のシェアプランで安価
+- ✅ LoRaWAN/ZigBee/SOCROMは高コストで複雑（個人農業には不向き）
+- ✅ AWS IoT Core/Azure IoT Hubはエンタープライズ向けで設定が複雑
+
+**対応データ送信先**:
+1. **Ambient**（推奨、無料枠あり）
+   - 無料枠: 8チャネル、1分間隔
+   - 日本の農業IoTで実績豊富
+   - グラフ自動生成
+2. **MQTT**（軽量、IoT標準）
+   - mosquitto（オープンソース）
+   - CloudMQTT（無料枠あり）
+3. **HTTP/HTTPS**（シンプル）
+   - 自前サーバーへPOST
+   - Webhookなど
 
 **主な機能**:
 - 各ポッドからのデータ集約
-- クラウドサービスへのデータ送信
-  - AWS IoT Core
-  - Google Cloud IoT
-  - Azure IoT Hub
-  - Ambient（データ可視化サービス）
+- Ambientへのデータ送信（グラフ可視化）
 - MQTT Broker連携
-- LoRaWANゲートウェイ連携
 - データのバッファリング（オフライン時）
+- **自動再接続**（Wi-Fi/4G切断時）
 
 **設定項目**:
 ```json
 {
-  "wifi_ssid": "MyWiFi",
-  "enable_mqtt": true,
-  "mqtt_broker": "mqtt.example.com",
-  "mqtt_port": 1883,
-  "mqtt_topics": {
-    "atmosphere": "farm/atmosphere",
-    "water": "farm/water"
+  "network": {
+    "type": "wifi",
+    "wifi_ssid": "MyWiFi",
+    "wifi_password": "password"
   },
-  "enable_lorawan": false,
-  "cloud_provider": "ambient",
-  "api_key": "YOUR_API_KEY"
+  "data_destination": "ambient",
+  "ambient": {
+    "channel_id": "12345",
+    "write_key": "YOUR_WRITE_KEY"
+  },
+  "mqtt": {
+    "enable": false,
+    "broker": "mqtt.example.com",
+    "port": 1883,
+    "topics": {
+      "atmosphere": "farm/atmosphere",
+      "water": "farm/water"
+    }
+  }
 }
 ```
 
 **ユースケース**:
-- 遠隔地からのデータ確認
-- データの長期保存
+- 外出先からスマホでデータ確認
+- データの長期保存・グラフ化
 - 複数デバイスの一元管理
+
+**ランニングコスト**:
+- Wi-Fi: ¥0/月
+- 4G LTE（格安SIM）: ¥500〜¥1,000/月
+- Ambient無料枠: ¥0/月
 
 **注意**: データ転送に特化し、センサーやアクチュエータは持たない
 
@@ -536,7 +576,8 @@ docker rmi farminpocket/atmosphere:latest
 | **guard** | PIRセンサー HC-SR501 | GPIO | ¥200 | - |
 | | 高輝度LED | GPIO | ¥100 | - |
 | | USB スピーカー | 3.5mmジャック | ¥500 | - |
-| **gateway** | （センサーなし） | - | - | - |
+| **gateway** | Wi-Fi（標準搭載） | - | ¥0 | - |
+| | USB 4G LTE モデム（オプション） | USB | ¥3,000 | - |
 
 ### 初期費用の目安
 
@@ -544,9 +585,17 @@ docker rmi farminpocket/atmosphere:latest
 - **water**: ¥3,300（センサー+電磁弁+リレー）
 - **camera**: ¥3,000（カメラのみ）
 - **guard**: ¥800（PIR+LED+スピーカー）
-- **gateway**: ¥0（ソフトウェアのみ）
+- **gateway**: ¥0（Wi-Fi利用時）/ ¥3,000（4G LTE利用時）
 
-**合計**: 約¥8,400（Raspberry Pi本体を除く）
+**合計**: 約¥8,400（Raspberry Pi本体を除く、Wi-Fi利用時）
+
+### ランニングコスト（月額）
+
+- **Wi-Fi利用時**: ¥0/月（既存ネットワーク利用）
+- **4G LTE利用時**: ¥500〜¥1,000/月（格安データSIM）
+- **Ambient無料枠**: ¥0/月（8チャネル、1分間隔）
+
+**年間**: ¥6,000〜¥12,000（4G LTE + 格安SIM利用時）
 
 ### ノーコンフィグの実現方法
 
