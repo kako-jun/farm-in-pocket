@@ -1,5 +1,5 @@
 {
-  "name": "farminpocket-temp",
+  "name": "farminpocket-atmosphere",
   "version": "1.0.0",
   "description": "温度・湿度監視モジュール - DHT22/DHT11/DS18B20センサーに対応",
   "author": "Farm in Pocket Contributors",

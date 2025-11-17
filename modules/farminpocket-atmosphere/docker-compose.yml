@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  farminpocket-temp:
+  farminpocket-atmosphere:
     build: .
-    container_name: farminpocket-temp
+    container_name: farminpocket-atmosphere
     volumes:
       - ./data:/data
       - ./config.json:/app/config.json
