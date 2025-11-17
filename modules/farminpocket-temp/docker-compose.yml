@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  farminpocket-temp:
+    build: .
+    container_name: farminpocket-temp
+    volumes:
+      - ./data:/data
+      - ./config.json:/app/config.json
+    restart: unless-stopped
+    labels:
+      - "version=1.0.0"
+      - "description=温度・湿度監視"
+    # 実際のセンサー使用時はprivilegedモードが必要
+    # privileged: true
+    # devices:
+    #   - /dev/gpiomem:/dev/gpiomem

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.api import system, modules, logs, settings
 from app.core.config import settings as app_settings
+from app.core.database import init_db
 
 
 @asynccontextmanager
@@ -11,6 +12,9 @@ async def lifespan(app: FastAPI):
     """アプリケーション起動時・終了時の処理"""
     # 起動時
     print("🌾 Farm in Pocket Web UI starting...")
+    print("📊 Initializing database...")
+    await init_db()
+    print("✅ Database initialized")
     yield
     # 終了時
     print("🌾 Farm in Pocket Web UI shutting down...")

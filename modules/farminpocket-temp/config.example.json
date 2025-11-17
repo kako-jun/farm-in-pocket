@@ -1,0 +1,12 @@
+{
+  "sensor_type": "DHT22",
+  "gpio_pin": 4,
+  "interval": 60,
+  "temp_offset": 0.0,
+  "humidity_offset": 0.0,
+  "alert_temp_high": 35.0,
+  "alert_temp_low": 5.0,
+  "alert_humidity_high": 80.0,
+  "alert_humidity_low": 30.0,
+  "data_dir": "/data"
+}

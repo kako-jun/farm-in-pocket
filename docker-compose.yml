@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Web UI バックエンド
+  backend:
+    build:
+      context: ./core/web-ui/backend
+      dockerfile: Dockerfile
+    container_name: farminpocket-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./core/web-ui/backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - backend-data:/app/data
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=sqlite+aiosqlite:///./data/farminpocket.db
+    restart: unless-stopped
+    networks:
+      - farminpocket-network
+
+  # Web UI フロントエンド
+  frontend:
+    build:
+      context: ./core/web-ui/frontend
+      dockerfile: Dockerfile
+    container_name: farminpocket-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./core/web-ui/frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - farminpocket-network
+
+  # 温度・湿度監視モジュール
+  farminpocket-temp:
+    build:
+      context: ./modules/farminpocket-temp
+      dockerfile: Dockerfile
+    container_name: farminpocket-temp
+    volumes:
+      - temp-data:/data
+    restart: unless-stopped
+    labels:
+      - "version=1.0.0"
+      - "description=温度・湿度監視"
+    networks:
+      - farminpocket-network
+
+volumes:
+  backend-data:
+  temp-data:
+
+networks:
+  farminpocket-network:
+    driver: bridge
