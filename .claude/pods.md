@@ -274,7 +274,7 @@ Farm in Pocketでは、各機能を「**ポッド（Pod）**」と呼びます�
 
 **旧名**: farminpocket-connect
 
-**役割**: クラウド連携・データ集約・通信
+**役割**: 外出先からのアクセスを可能にする
 
 **推奨ネットワーク（ノーコンフィグ対応）**:
 
@@ -283,6 +283,7 @@ Farm in Pocketでは、各機能を「**ポッド（Pod）**」と呼びます�
 - 自宅の既存Wi-Fiルーターに接続
 - 追加コスト: ¥0
 - 設定: SSID + パスワードのみ
+- **同じWi-Fi内ならスマホ・PCから直接アクセス可能**（`http://192.168.1.xxx:8000`）
 
 #### 2. 4G LTE（Wi-Fiが届かない場合）
 - **USB 4G LTE モデム**（約3000円）
@@ -290,72 +291,53 @@ Farm in Pocketでは、各機能を「**ポッド（Pod）**」と呼びます�
   - Raspberry PiのUSBポートに差し込むだけ
 - **格安データSIM**（月額500〜1000円）
   - IIJmio データプラン: 2GB ¥740/月
-  - OCNモバイルONE: 3GB ¥858/月
   - mineo: 5GB ¥1,265/月
   - 家族契約のシェアプランで追加可能
-- APN自動設定（主要キャリア対応）
+- **問題**: 4G利用時は自宅LANでないため、外出先からアクセスできない
+
+**外出先アクセスの方法（4G利用時）**:
+
+#### 方法1: Tailscale（推奨、無料）
+- 無料VPN、設定3分
+- Raspberry Piとスマホにアプリをインストール
+- 無料で最大100台まで接続可能
+- どこからでも `http://100.x.x.x:8000` でアクセス
+
+#### 方法2: ngrok（無料枠あり）
+- トンネリングサービス
+- コマンド1つで起動: `ngrok http 8000`
+- `https://xxx.ngrok.io` でアクセス可能
+
+#### 方法3: Cloudflare Tunnel（無料）
+- 独自ドメインでアクセス可能
+- 設定はやや複雑
 
 **なぜこの構成？**
-- ✅ Wi-Fiは既存ネットワークを利用（ゼロコスト）
-- ✅ 格安SIMは家族契約のシェアプランで安価
-- ✅ LoRaWAN/ZigBee/SOCROMは高コストで複雑（個人農業には不向き）
-- ✅ AWS IoT Core/Azure IoT Hubはエンタープライズ向けで設定が複雑
-
-**対応データ送信先**:
-1. **Ambient**（推奨、無料枠あり）
-   - 無料枠: 8チャネル、1分間隔
-   - 日本の農業IoTで実績豊富
-   - グラフ自動生成
-2. **MQTT**（軽量、IoT標準）
-   - mosquitto（オープンソース）
-   - CloudMQTT（無料枠あり）
-3. **HTTP/HTTPS**（シンプル）
-   - 自前サーバーへPOST
-   - Webhookなど
+- ✅ Wi-Fiは既存ネットワークを利用（ゼロコスト、設定不要）
+- ✅ 4G利用時はTailscaleで簡単にVPN接続
+- ✅ LoRaWAN/ZigBee/SORACOM等は高コストで複雑（個人農業には不向き）
+- ❌ Ambient/MQTTは初心者には複雑（削除）
 
 **主な機能**:
-- 各ポッドからのデータ集約
-- Ambientへのデータ送信（グラフ可視化）
-- MQTT Broker連携
+- ローカルWeb UIでのデータ表示・グラフ化
+- 外出先からのアクセス（Tailscale経由）
 - データのバッファリング（オフライン時）
 - **自動再接続**（Wi-Fi/4G切断時）
 
-**設定項目**:
-```json
-{
-  "network": {
-    "type": "wifi",
-    "wifi_ssid": "MyWiFi",
-    "wifi_password": "password"
-  },
-  "data_destination": "ambient",
-  "ambient": {
-    "channel_id": "12345",
-    "write_key": "YOUR_WRITE_KEY"
-  },
-  "mqtt": {
-    "enable": false,
-    "broker": "mqtt.example.com",
-    "port": 1883,
-    "topics": {
-      "atmosphere": "farm/atmosphere",
-      "water": "farm/water"
-    }
-  }
-}
-```
-
 **ユースケース**:
-- 外出先からスマホでデータ確認
-- データの長期保存・グラフ化
-- 複数デバイスの一元管理
+- 自宅Wi-Fi内でスマホからデータ確認（デフォルト）
+- 外出先からデータ確認（Tailscale利用時）
+- 畑にRaspberry Pi設置、自宅からモニタリング（4G + Tailscale）
 
 **ランニングコスト**:
 - Wi-Fi: ¥0/月
 - 4G LTE（格安SIM）: ¥500〜¥1,000/月
-- Ambient無料枠: ¥0/月
+- Tailscale: ¥0/月（無料枠）
 
-**注意**: データ転送に特化し、センサーやアクチュエータは持たない
+**注意**:
+- データ表示はFarm in Pocket内蔵のWeb UIで完結
+- 外部サービス（Ambient等）への送信は不要
+- センサーやアクチュエータは持たない
 
 ---
 
@@ -593,9 +575,10 @@ docker rmi farminpocket/atmosphere:latest
 
 - **Wi-Fi利用時**: ¥0/月（既存ネットワーク利用）
 - **4G LTE利用時**: ¥500〜¥1,000/月（格安データSIM）
-- **Ambient無料枠**: ¥0/月（8チャネル、1分間隔）
+- **Tailscale（外出先アクセス）**: ¥0/月（無料枠）
 
 **年間**: ¥6,000〜¥12,000（4G LTE + 格安SIM利用時）
+**年間**: ¥0（Wi-Fi + Tailscale利用時）
 
 ### ノーコンフィグの実現方法
 
