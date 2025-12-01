@@ -91,3 +91,4 @@ config.yml
 secrets.yml
 credentials.json
 .claude/settings.local.json
+.serena/
