@@ -1,5 +1,7 @@
 # NOTE: 本番 Workers の URL が確定したら下記を実 URL に書き換えてコミット。
 # 例: api.farm-in-pocket.llll-ll.com に custom domain を当てた場合は
 #   /api/*  https://api.farm-in-pocket.llll-ll.com/api/:splat  200
-# 現状は wrangler のデフォルト workers.dev サブドメインをプレースホルダーとして指定。
-/api/*  https://farm-in-pocket-api.workers.dev/api/:splat  200
+# wrangler のデフォルト workers.dev は <account_subdomain>.workers.dev 形式なので
+# Workers 初回 deploy 後に表示される実 URL（例: farm-in-pocket-api.<account>.workers.dev）
+# に書き換えること。下記はプレースホルダーで、このままだと /api/* は 404 になる。
+/api/*  https://farm-in-pocket-api.REPLACE-WITH-ACCOUNT.workers.dev/api/:splat  200
