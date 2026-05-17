@@ -7,7 +7,8 @@
     "dev": "astro dev --host 127.0.0.1 --port 4321",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/react": "^4.2.0",
@@ -21,8 +22,15 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.7.2"
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "happy-dom": "^15.11.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
   }
 }

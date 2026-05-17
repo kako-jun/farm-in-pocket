@@ -1,0 +1,32 @@
+---
+import PrivacySettings from "../components/PrivacySettings";
+import "../styles/global.css";
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>設定 — Farm in Pocket (ポケ農)</title>
+  </head>
+  <body>
+    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-6 max-w-2xl mx-auto space-y-8">
+      <h1 class="text-2xl font-bold">設定</h1>
+
+      <section class="space-y-3">
+        <h2 class="text-lg font-semibold">プライバシー</h2>
+        <p class="text-sm text-neutral-600">
+          初回起動時に表示される注意事項を、いつでも再表示できます。
+        </p>
+        <PrivacySettings client:load />
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="text-lg font-semibold">その他</h2>
+        <p class="text-sm text-neutral-500">
+          （その他の設定は今後追加）
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
