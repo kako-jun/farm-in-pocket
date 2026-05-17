@@ -19,3 +19,12 @@ binding = "DB"
 database_name = "farm-in-pocket"
 database_id = "REPLACE_WITH_PROD_DATABASE_ID"
 migrations_dir = "migrations"
+
+# --- 本番カスタムドメイン設定（DNS と合わせて kako-jun 手動で有効化） ---
+# llll-ll.com の DNS は Cloudflare 管理。`api.farm-in-pocket.llll-ll.com` を
+# この Worker に当てるときは以下のコメントを外す:
+#
+# [[routes]]
+# pattern = "api.farm-in-pocket.llll-ll.com/*"
+# zone_name = "llll-ll.com"
+# custom_domain = true

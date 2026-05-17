@@ -46,6 +46,38 @@
 - **D1 では外部キー制約は enforce されない**（アプリ層で担保）
 - **`updated_at` は手動で UPDATE 文に含める**（SQLite に ON UPDATE トリガがない）
 
+## デプロイ（Cloudflare）
+
+### 必要な GitHub Secrets
+リポジトリ Settings → Secrets and variables → Actions に以下を登録:
+
+- `CLOUDFLARE_API_TOKEN` — Pages + Workers + D1 の権限を持つトークン
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare ダッシュボードの Account ID
+
+### 初期セットアップ（kako-jun 手動）
+
+1. Cloudflare Pages プロジェクト作成: `farm-in-pocket`（Production branch: main）
+2. カスタムドメイン: `farm-in-pocket.llll-ll.com` を Pages に紐付け（llll-ll.com の DNS は Cloudflare 管理）
+3. Workers プロジェクト作成: `wrangler deploy` を 1 回 apps/api で実行（dashboard 上は `farm-in-pocket-api` で出現）
+4. D1: `cd apps/api && pnpm wrangler d1 create farm-in-pocket` → 出力された ID を `wrangler.toml` の `REPLACE_WITH_PROD_DATABASE_ID` に貼る → コミット
+5. 本番マイグレーション: `pnpm migrate:remote`
+6. Workers のカスタムドメイン: `api.farm-in-pocket.llll-ll.com` を割り当て（wrangler.toml の routes コメントを有効化）
+7. `apps/web/public/_redirects` の Workers ドメインを実 URL に書き換えてコミット
+
+### 自動デプロイ
+
+main マージ後、GitHub Actions が以下を実行:
+- typecheck / biome / 全テスト
+- apps/web を Cloudflare Pages にデプロイ
+- apps/api を Workers にデプロイ
+- マイグレーションは含めない（手動で `pnpm migrate:remote`）
+
+### ローカル動作確認
+
+- web: `pnpm --filter @farm-in-pocket/web dev` → http://127.0.0.1:4321
+- api: `pnpm --filter @farm-in-pocket/api dev` → http://127.0.0.1:8787
+- D1: `pnpm migrate:local` 済み前提
+
 ## プライバシー方針
 
 ポケ農の作業記録・写真投稿は Nostr 経由で公開される。初回起動時に必読の注意事項モーダルを表示し、スキップ不可で承認させる。`localStorage` キー: `fip:privacy-accepted-v1`。承認後は設定 → 「プライバシー注意事項を再表示」から再表示できる。
