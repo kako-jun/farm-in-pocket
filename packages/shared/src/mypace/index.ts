@@ -9,4 +9,6 @@ export {
   type UnsignedNostrEvent,
   type UploadRecord,
   type UploadType,
+  type ViewCounts,
+  type ViewsAndSuperMentions,
 } from "./types";

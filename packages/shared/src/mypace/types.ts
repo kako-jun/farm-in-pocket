@@ -11,6 +11,7 @@ export interface NostrEvent {
   sig: string;
 }
 
+// 後続 Issue #12 (nsec 生成・署名) で利用予定。署名前イベントを表現するため残す。
 export type UnsignedNostrEvent = Omit<NostrEvent, "id" | "sig">;
 
 export interface NostrProfile {
@@ -30,7 +31,8 @@ export interface UploadRecord {
   url: string;
   filename: string;
   type: UploadType;
-  uploaded_at: number;
+  // mypace 側は camelCase で返す (uploadedAt)。
+  uploadedAt: number;
 }
 
 export interface OgpData {
@@ -40,6 +42,16 @@ export interface OgpData {
   siteName?: string;
   url?: string;
   fetched_at?: number;
+}
+
+export interface ViewCounts {
+  detail: number;
+  impression: number;
+}
+
+export interface ViewsAndSuperMentions {
+  views: Record<string, ViewCounts>;
+  superMentions: Record<string, string>;
 }
 
 export interface MypaceClientConfig {
@@ -58,7 +70,10 @@ export class MypaceApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly statusText: string,
+    // endpoint: ルートパターン (例: "/api/events/:id")。ログ集計のグルーピング用。
     public readonly endpoint: string,
+    // url: 実際に fetch した URL。デバッグ用に query string まで保持する。
+    public readonly url: string,
     public readonly body?: unknown,
   ) {
     super(`mypace API ${status} ${statusText} @ ${endpoint}`);
