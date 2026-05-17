@@ -1,12 +1,15 @@
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 
-const STORAGE_KEY = "fip:privacy-accepted-v1";
+export const STORAGE_KEY = "fip:privacy-accepted-v1";
 const SCROLL_THRESHOLD_PX = 4;
 
 export function resetPrivacyAcceptance(): void {
-  localStorage.removeItem(STORAGE_KEY);
-  location.reload();
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.location.reload();
 }
 
 export default function PrivacyNotice(): JSX.Element | null {
@@ -128,12 +131,13 @@ export default function PrivacyNotice(): JSX.Element | null {
             onClick={handleProceed}
             disabled={!canProceed}
             data-testid="fip-privacy-proceed"
+            aria-describedby={!scrolledToEnd ? "fip-privacy-proceed-help" : undefined}
             className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500"
           >
             進める
           </button>
           {!scrolledToEnd && (
-            <p className="text-xs text-neutral-500 text-center">
+            <p id="fip-privacy-proceed-help" className="text-xs text-neutral-500 text-center">
               ※ 最下部までスクロールして全文を確認してください
             </p>
           )}
