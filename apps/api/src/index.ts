@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 type Bindings = {
   DB: D1Database;
+  MYPACE_API_URL: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
