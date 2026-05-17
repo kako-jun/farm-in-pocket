@@ -7,7 +7,10 @@
     "dev": "wrangler dev --port 8787",
     "build": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:remote": "node -e \"const fs=require('fs');const t=fs.readFileSync('wrangler.toml','utf8');if(t.includes('REPLACE_WITH_PROD_DATABASE_ID')){console.error('ERROR: wrangler.toml の database_id がプレースホルダーです。wrangler d1 create farm-in-pocket で本番 DB を作成し、ID を貼り替えてください。');process.exit(1)}\" && wrangler d1 migrations apply DB --remote",
+    "db:reset:local": "rm -rf .wrangler/state/v3/d1 && wrangler d1 migrations apply DB --local"
   },
   "dependencies": {
     "@farm-in-pocket/shared": "workspace:*",
