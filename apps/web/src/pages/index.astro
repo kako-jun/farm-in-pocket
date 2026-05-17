@@ -1,5 +1,6 @@
 ---
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
+import PrivacyNotice from "../components/PrivacyNotice";
 import "../styles/global.css";
 ---
 
@@ -16,5 +17,6 @@ import "../styles/global.css";
       <p class="text-lg">準備中です。設計・実装中（Phase 0）。</p>
       <p class="text-sm text-neutral-500">v{FARM_IN_POCKET_VERSION}</p>
     </main>
+    <PrivacyNotice client:load />
   </body>
 </html>
