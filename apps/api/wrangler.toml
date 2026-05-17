@@ -4,3 +4,5 @@ compatibility_date = "2025-01-01"
 
 [observability]
 enabled = true
+
+# NOTE: D1 binding と必要に応じた compatibility_flags = ["nodejs_compat"] は #8 (D1 スキーマ) で追加する

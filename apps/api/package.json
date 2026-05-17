@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@farm-in-pocket/shared": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {
