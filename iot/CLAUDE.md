@@ -1,4 +1,7 @@
-# Farm in Pocket 開発者向けドキュメント
+# Farm in Pocket 開発者向けドキュメント（旧 IoT 版）
+
+> ⚠️ このドキュメントは Raspberry Pi 向け旧 IoT 版のものです。新 Web 版（ポケ農）はリポジトリルートの README.md / CLAUDE.md を参照してください。
+> 本ドキュメント内に出てくる `core/` `modules/` `docs/` 等のパスはすべて `iot/` 配下に退避済みです（例: `iot/core/`）。
 
 零細農家・個人農家のための完全無料IoT農業システム。
 
