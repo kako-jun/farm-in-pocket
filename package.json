@@ -6,7 +6,8 @@
     "build": "pnpm -r build",
     "check": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

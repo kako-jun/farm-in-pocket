@@ -5,6 +5,10 @@ compatibility_date = "2025-01-01"
 [observability]
 enabled = true
 
+# mypace API のベース URL。dev override は .dev.vars に MYPACE_API_URL を書く。
+[vars]
+MYPACE_API_URL = "https://mypace.llll-ll.com"
+
 # D1 binding
 # 本番 DB は `wrangler d1 create farm-in-pocket` で作成し、
 # 出力された database_id を下の REPLACE_WITH_PROD_DATABASE_ID に貼り替えること。

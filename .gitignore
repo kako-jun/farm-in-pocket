@@ -11,6 +11,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# ↑ Python の build 用無視。TypeScript の src/lib は無視しない。
+!apps/*/src/lib/
+!apps/*/src/lib/**
 parts/
 sdist/
 var/
