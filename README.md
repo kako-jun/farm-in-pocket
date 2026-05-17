@@ -25,6 +25,27 @@
 - **配信**: Cloudflare Pages
 - **認証/投稿**: Nostr (mypace 経由)
 
+## D1 セットアップと運用
+
+### 初回（本番 DB 作成）
+
+1. `cd apps/api && pnpm wrangler d1 create farm-in-pocket`
+2. 出力された `database_id` を `apps/api/wrangler.toml` の `REPLACE_WITH_PROD_DATABASE_ID` に貼る
+3. `pnpm migrate:remote` で本番にマイグレーションを適用
+
+### 開発時（ローカル sqlite）
+
+- 初回: `cd apps/api && pnpm migrate:local`
+- スキーマやり直し: `pnpm db:reset:local`（ローカル sqlite を全消去して再適用）
+- 状態確認: `pnpm dev` 起動後、`http://127.0.0.1:8787/db/health` で テーブル一覧 JSON が返る
+
+### マイグレーション追加
+
+- 新規ファイルを `apps/api/migrations/NNNN_short_name.sql` で追加（連番）
+- SQLite/D1 互換 SQL のみ使用
+- **D1 では外部キー制約は enforce されない**（アプリ層で担保）
+- **`updated_at` は手動で UPDATE 文に含める**（SQLite に ON UPDATE トリガがない）
+
 ## ディレクトリ構成
 
 ```

@@ -8,6 +8,13 @@
 --   * timestamps use TEXT ISO 8601 via datetime('now') default.
 --   * forward references between grids / cells / plantings are allowed in SQLite;
 --     order below is chosen for readability.
+--
+-- IMPORTANT: Cloudflare D1 は PRAGMA foreign_keys=ON をセッション単位でしか効かせられず、
+-- REFERENCES に書いた ON DELETE / RESTRICT は本番では enforce されない前提で書いている。
+-- アプリ層（apps/api のハンドラ）で参照整合性とカスケード処理を担保すること。
+--
+-- IMPORTANT: updated_at は DEFAULT (datetime('now')) のみ。SQLite/D1 には ON UPDATE トリガがないため、
+-- UPDATE 文では明示的に updated_at = datetime('now') を SET すること。
 
 PRAGMA foreign_keys = ON;
 
