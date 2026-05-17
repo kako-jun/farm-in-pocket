@@ -33,6 +33,9 @@ yarn-error.log*
 dist/
 .next/
 out/
+.astro/
+.wrangler/
+.dev.vars
 
 # IDE
 .vscode/
