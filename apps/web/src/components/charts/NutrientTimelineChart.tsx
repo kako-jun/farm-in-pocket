@@ -11,7 +11,7 @@
 //   - responsive: width 100% / viewBox + preserveAspectRatio="none"。
 
 import type { NutrientRecord, NutrientType } from "@farm-in-pocket/shared";
-import { NUTRIENT_COLORS } from "@farm-in-pocket/shared";
+import { NUTRIENT_COLORS, daysSince, fadeOpacity } from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 
 export interface NutrientTimelineChartProps {
@@ -237,7 +237,7 @@ export default function NutrientTimelineChart(props: NutrientTimelineChartProps)
         );
       })}
 
-      {/* 投入点 ● */}
+      {/* 投入点 ● (Issue #26: fadeOpacity("fertilize") で古い投入ほど薄く) */}
       {sorted.map((rec, i) => {
         const typeIdx = usedTypes.indexOf(rec.nutrientType);
         if (typeIdx < 0) return null;
@@ -247,15 +247,18 @@ export default function NutrientTimelineChart(props: NutrientTimelineChartProps)
         const date = dateLabel(rec.appliedAt);
         const amountStr = rec.amount != null ? ` ${rec.amount}${rec.amountUnit ?? "g"}` : "";
         const label = `${date} ${rec.nutrientType}${amountStr}`;
+        const opacity = fadeOpacity(daysSince(rec.appliedAt), "fertilize");
         return (
           <circle
             key={`pt-${rec.id}`}
             data-testid={`fip-nutrient-chart-point-${i}`}
             data-type={rec.nutrientType}
+            data-opacity={opacity.toFixed(2)}
             cx={cx}
             cy={cy}
             r={POINT_RADIUS}
             fill={color}
+            opacity={opacity}
             aria-label={label}
           >
             <title>{label}</title>

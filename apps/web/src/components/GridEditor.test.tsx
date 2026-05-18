@@ -696,4 +696,50 @@ describe("GridEditor", () => {
     // 再 POST されない
     expect(postCount).toBe(1);
   });
+
+  // Issue #26: 経過時間フェード
+  it("Issue #26: 30 日前の施肥セルはバッジが薄く表示される (opacity 0.5 付近)", async () => {
+    seedSecretKey();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    routes.push({
+      match: (u) => u.includes("/api/grids?pubkey="),
+      response: {
+        grids: [
+          {
+            id: "g1",
+            userPubkey: "x".repeat(64),
+            name: "畑",
+            environment: "outdoor_sunny",
+            lighting: null,
+            sizeX: 1,
+            sizeY: 1,
+            sortOrder: 0,
+            cells: [
+              {
+                id: 1,
+                gridId: "g1",
+                x: 0,
+                y: 0,
+                containerType: "pot",
+                soilType: "potting_mix",
+                currentPlantingId: null,
+                currentPlantId: null,
+                currentPlantName: null,
+                lastFertilizedAt: thirtyDaysAgo,
+                lastPesticideAt: null,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    render(<GridEditor />);
+    const badge = await screen.findByTestId("fip-grid-cell-0-0-fertilize-badge");
+    const opacity = Number(badge.getAttribute("data-fade-opacity"));
+    // 30 日経過なら fadeOpacity は 0.5。floor の都合で 29 になるケースもあるので幅を見る。
+    expect(opacity).toBeGreaterThan(0.4);
+    expect(opacity).toBeLessThan(0.65);
+    // 90 日超でもバッジ自体は消さず、ほぼ透明で残す仕様
+    expect(badge).toBeInTheDocument();
+  });
 });

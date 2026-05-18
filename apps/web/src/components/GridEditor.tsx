@@ -8,6 +8,7 @@ import type {
   RotationWarning,
   SoilType,
 } from "@farm-in-pocket/shared";
+import { daysSince, fadeOpacity } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createGrid,
@@ -115,10 +116,10 @@ function buildCellMap(cells: CellRecord[]): CellMap {
 // "menu" は旧 Phase 1 のメニュー UI で、既存テストが触っているので互換維持のため残す。
 type ModalKind = "detail" | "menu" | "container" | "soil" | "plant" | null;
 
-// バッジ閾値 (Issue #15 spec)
-// Phase 2 (#26) で経過時間 fade に置き換える予定。
-const FERTILIZE_BADGE_DAYS = 30;
-const PESTICIDE_BADGE_DAYS = 14;
+// Issue #26: 経過時間 fade。閾値で「表示/非表示」を切り替えるのではなく、
+// lastFertilizedAt / lastPesticideAt が記録されていれば常にバッジを出し、
+// 経過日数を opacity で表現する（fadeOpacity）。
+// 「もう古いから消す」のではなく「だいぶ前にやったな」を視覚的に残すデザイン。
 
 function daysAgo(iso: string | null): number | null {
   if (!iso) return null;
@@ -126,6 +127,19 @@ function daysAgo(iso: string | null): number | null {
   if (Number.isNaN(t)) return null;
   const diffMs = Date.now() - t;
   return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
+/** 経過日数を人間に分かりやすい aria-label 用の文字列に変換する。 */
+function ageLabel(days: number): string {
+  if (days <= 0) return "今日";
+  if (days === 1) return "1日前";
+  if (days < 30) return `${days}日前`;
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `${months}ヶ月前`;
+  }
+  const years = Math.floor(days / 365);
+  return `${years}年前`;
 }
 
 interface OpenCell {
@@ -772,18 +786,25 @@ export default function GridEditor(): JSX.Element {
               cell?.containerType && cell.containerType !== "void" ? cell.containerType : null;
             const hasContainer = containerNonVoid !== null;
             const hasPlanting = cell?.currentPlantingId != null;
-            // Issue #15: 施肥 / 農薬バッジ判定。閾値内なら点を出す。fade は Phase 2 で実装。
+            // Issue #26: 施肥 / 農薬バッジは記録があれば常に表示し、
+            // 経過日数に応じた opacity でフェードさせる（だいぶ前=ほぼ透明グレー）。
             const fertilizedDays = daysAgo(cell?.lastFertilizedAt ?? null);
             const pesticideDays = daysAgo(cell?.lastPesticideAt ?? null);
-            const showFertilizeBadge =
-              !isVoid && fertilizedDays !== null && fertilizedDays <= FERTILIZE_BADGE_DAYS;
-            const showPesticideBadge =
-              !isVoid && pesticideDays !== null && pesticideDays <= PESTICIDE_BADGE_DAYS;
+            const showFertilizeBadge = !isVoid && fertilizedDays !== null;
+            const showPesticideBadge = !isVoid && pesticideDays !== null;
+            const fertilizeOpacity =
+              showFertilizeBadge && fertilizedDays !== null
+                ? fadeOpacity(daysSince(cell?.lastFertilizedAt ?? null), "fertilize")
+                : 1;
+            const pesticideOpacity =
+              showPesticideBadge && pesticideDays !== null
+                ? fadeOpacity(daysSince(cell?.lastPesticideAt ?? null), "pesticide")
+                : 1;
             const ariaLabelParts: string[] = [];
             if (showFertilizeBadge && fertilizedDays !== null)
-              ariaLabelParts.push(`最後の施肥: ${fertilizedDays}日前`);
+              ariaLabelParts.push(`最後の施肥: ${ageLabel(fertilizedDays)}`);
             if (showPesticideBadge && pesticideDays !== null)
-              ariaLabelParts.push(`最後の農薬: ${pesticideDays}日前`);
+              ariaLabelParts.push(`最後の農薬: ${ageLabel(pesticideDays)}`);
             const style: React.CSSProperties = isVoid
               ? {
                   backgroundColor: "#e5e7eb",
@@ -827,8 +848,10 @@ export default function GridEditor(): JSX.Element {
                 {showFertilizeBadge && fertilizedDays !== null && (
                   <span
                     data-testid={`fip-grid-cell-${x}-${y}-fertilize-badge`}
+                    data-fade-opacity={fertilizeOpacity.toFixed(2)}
                     className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-full bg-emerald-600 px-1 text-[8px] font-semibold leading-none text-white"
-                    title={`最後の施肥: ${fertilizedDays}日前`}
+                    style={{ opacity: fertilizeOpacity }}
+                    title={`最後の施肥: ${ageLabel(fertilizedDays)}`}
                   >
                     <span aria-hidden="true">●</span>
                     <span>{fertilizedDays}d</span>
@@ -837,8 +860,10 @@ export default function GridEditor(): JSX.Element {
                 {showPesticideBadge && pesticideDays !== null && (
                   <span
                     data-testid={`fip-grid-cell-${x}-${y}-pesticide-badge`}
+                    data-fade-opacity={pesticideOpacity.toFixed(2)}
                     className="absolute bottom-0.5 left-0.5 flex items-center gap-0.5 rounded-full bg-red-600 px-1 text-[8px] font-semibold leading-none text-white"
-                    title={`最後の農薬: ${pesticideDays}日前`}
+                    style={{ opacity: pesticideOpacity }}
+                    title={`最後の農薬: ${ageLabel(pesticideDays)}`}
                   >
                     <span aria-hidden="true">●</span>
                     <span>{pesticideDays}d</span>

@@ -1,14 +1,16 @@
-// PhTimelineChart: pH 測定値の時系列折れ線グラフ (Issue #24)
+// PhTimelineChart: pH 測定値の時系列折れ線グラフ (Issue #24 + #26 fade 統一)
 //
 // 設計方針:
 //   - 外部ライブラリ非依存。SVG だけで描く。バンドル軽量。Astro + React 19 と互換。
 //   - props: data (date, value の配列。呼び出し側で measured_at 昇順を保証する想定)
-//   - 古いデータほど点の opacity が低い（参考値扱い）
+//   - 古いデータほど点の opacity が低い → Issue #26 の fadeOpacity("ph") に統一。
+//     経過日数（now との差）から opacity を決め、index ベースの 0.35〜1.0 補間はやめる。
 //   - y 軸は pH 0-14 固定、4 / 7 / 10 にガイドライン
 //   - x 軸ラベルは最初・中央・最後の最大 3 点
 //   - データ 0 件なら placeholder「データなし」を表示
 //   - responsive: width 100% / viewBox
 
+import { daysSince, fadeOpacity } from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 
 export interface PhTimelinePoint {
@@ -44,12 +46,11 @@ function dateToX(index: number, total: number, plotLeft: number, plotRight: numb
 
 /**
  * 古いほど薄く、新しいほど濃い opacity を返す。
- *   total=1 のときは 1.0
- *   それ以外は 0.35 から 1.0 まで線形に上がる（最古=0.35, 最新=1.0）
+ * Issue #26: shared/fade の "ph" スケジュールに統一（1 ヶ月以内 1.0 / 3 ヶ月 0.5 / 6 ヶ月以上 0.2）。
+ * date が parse 不能なら最も薄い値に倒れる。
  */
-function opacityFor(index: number, total: number): number {
-  if (total <= 1) return 1;
-  return 0.35 + (index / (total - 1)) * 0.65;
+function opacityFor(date: string): number {
+  return fadeOpacity(daysSince(date), "ph");
 }
 
 export default function PhTimelineChart(props: PhTimelineChartProps): JSX.Element {
@@ -79,7 +80,7 @@ export default function PhTimelineChart(props: PhTimelineChartProps): JSX.Elemen
   const points = data.map((p, i) => ({
     x: dateToX(i, total, plotLeft, plotRight),
     y: valueToY(p.value, plotTop, plotBottom),
-    opacity: opacityFor(i, total),
+    opacity: opacityFor(p.date),
     date: p.date,
     value: p.value,
   }));
