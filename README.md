@@ -82,6 +82,16 @@ main マージ後、GitHub Actions が以下を実行:
 
 ポケ農の作業記録・写真投稿は Nostr 経由で公開される。初回起動時に必読の注意事項モーダルを表示し、スキップ不可で承認させる。`localStorage` キー: `fip:privacy-accepted-v1`。承認後は設定 → 「プライバシー注意事項を再表示」から再表示できる。
 
+## 写真の遠景匿名化 (modellhorizont 連携)
+
+作業記録に添付する写真の「遠景（背景）」を、外部モデル [modellhorizont](https://github.com/kako-jun/modellhorizont) で差し替えて、撮影場所が特定されにくくする統合点を Issue #43 で準備しています。
+
+- **現状はプレースホルダー**: trigger フックだけ実装済みで、modellhorizont 自体が未成熟のためまだ no-op です。
+- **設定**: 設定 → 「写真の遠景匿名化」のトグル。既定 OFF。`localStorage` キー `fip:background-replace-enabled-v1`（`"true"` / `"false"`）。
+- **統合点**: `packages/shared/src/image/modellhorizont.ts` の `applyBackgroundReplace({ file, enabled, impl })`。本番統合時はアプリ側で `impl: (f) => modellhorizont(f)` を注入するだけで切り替わります。
+- **挙動契約**: `applied=true` のときは戻り `file` を差し替え後の File として扱い、`applied=false` のときは元 File をそのまま使う。`reason` には `disabled` / `not_integrated_yet` / エラー文言が入る。
+- **UI**: 差し替えが 1 枚以上適用されたら PhotoPicker に「遠景差し替え済み (n 枚)」を一時表示。placeholder 段階では出ません。
+
 ## アカウント（Nostr）
 
 ポケ農のアカウントは Nostr の鍵ペア（secp256k1）です。サーバー登録は不要で、端末ローカルに鍵が保存されます。

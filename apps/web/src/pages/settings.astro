@@ -1,5 +1,6 @@
 ---
 import AccountSettings from "../components/AccountSettings";
+import BackgroundReplaceSettings from "../components/BackgroundReplaceSettings";
 import KeifunVoiceSettings from "../components/keifun/KeifunVoiceSettings";
 import PrivacySettings from "../components/PrivacySettings";
 import RegionSettings from "../components/RegionSettings";
@@ -27,6 +28,15 @@ export const prerender = true;
         初回起動時に表示される注意事項を、いつでも再表示できます。
       </p>
       <PrivacySettings client:load />
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">写真の遠景匿名化</h2>
+      <p class="text-sm text-neutral-600">
+        作業記録に添付する写真の遠景（背景）を、外部モデル
+        modellhorizont で差し替えて場所を特定されにくくする機能を準備中です。
+      </p>
+      <BackgroundReplaceSettings client:load />
     </section>
 
     <section class="space-y-3">
