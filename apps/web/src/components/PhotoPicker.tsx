@@ -2,20 +2,28 @@
 // を表示する。urls は親（RecordForm）が単一の真実として保持する。
 //
 // Issue: kako-jun/farm-in-pocket#17
+// 拡張: kako-jun/farm-in-pocket#28 — フィルタガチャを挟む
 //
 // UX:
 //   - <input type="file" multiple capture="environment"> で複数選択
-//   - 順次アップロード（並列にすると nostr.build の rate limit を踏みやすい）
-//   - 進捗「アップロード中... (n/m)」
-//   - 失敗は累計 error として下部にリスト表示
-//   - サムネは grid、× で削除（urls から除外 + deleteFromNostrBuild を fire-and-forget で呼ぶ）
+//   - 選択直後に FilterPickerModal でランダムプリセット適用 → 確定するまでアップロードしない
+//   - 「アップロード」確定 → 全選択ファイルに同じフィルタを焼き込み (apply-filter) → 順次 POST
+//   - 「キャンセル」でアップロード自体を中止 (urls は変化なし)
+//   - 進捗「アップロード中... (n/m)」、失敗は errors にリスト表示
+//   - サムネは grid、× で削除（urls から除外 + deleteFromNostrBuild を fire-and-forget）
 //   - maxFiles 既定 4。超過は警告だけ出して受け付けない
 
-import { createNip98Signer, deleteFromNostrBuild } from "@farm-in-pocket/shared";
+import {
+  type FilterPreset,
+  applyFilterToFile,
+  createNip98Signer,
+  deleteFromNostrBuild,
+} from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 import { useId, useRef, useState } from "react";
 import { useImageUpload } from "../hooks/useImageUpload";
 import { getMyKeyPair } from "../lib/keys";
+import FilterPickerModal from "./FilterPickerModal";
 
 export interface PhotoPickerProps {
   urls: string[];
@@ -37,18 +45,19 @@ export default function PhotoPicker({
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  // フィルタ確定待ちの File 群。null の間はモーダル非表示。
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
 
   const handlePickClick = (): void => {
     inputRef.current?.click();
   };
 
-  const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(e.target.files ?? []);
     // 同じファイルを連続選択しても change が発火するように input を即クリア
     if (inputRef.current) inputRef.current.value = "";
     if (files.length === 0) return;
     // 二重実行ガード: アップロード進行中なら新しい選択を黙って無視
-    // （ボタンは disabled で守っているが、キーボード/プログラム経路を塞ぐ）
     if (uploading) return;
 
     setWarning(null);
@@ -64,14 +73,35 @@ export default function PhotoPicker({
       setWarning(`最大 ${maxFiles} 枚までです。${files.length - remaining} 枚は無視しました`);
     }
 
+    // 実アップロードは FilterPickerModal の onConfirm まで遅延する
+    setPendingFiles(targets);
+  };
+
+  const handleFilterCancel = (): void => {
+    setPendingFiles(null);
+  };
+
+  const handleFilterConfirm = async (filter: FilterPreset, files: File[]): Promise<void> => {
+    setPendingFiles(null);
+
     const collected: string[] = [];
     const failed: string[] = [];
 
-    for (let i = 0; i < targets.length; i++) {
-      const file = targets[i];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       if (!file) continue;
-      setProgress({ current: i + 1, total: targets.length });
-      const res = await uploadFile(file);
+      setProgress({ current: i + 1, total: files.length });
+
+      // フィルタを実体に焼き込む。none / 未対応環境では元 File が返る。
+      let prepared: File;
+      try {
+        prepared = await applyFilterToFile(file, filter.filter);
+      } catch (_err) {
+        // 焼き込み失敗時は加工なしで続行 (アップロード自体は試みる)
+        prepared = file;
+      }
+
+      const res = await uploadFile(prepared);
       if (res.success && res.url) {
         collected.push(res.url);
       } else {
@@ -109,9 +139,7 @@ export default function PhotoPicker({
         capture="environment"
         className="hidden"
         disabled={disabled || uploading}
-        onChange={(e) => {
-          void handleFilesChange(e);
-        }}
+        onChange={handleFilesChange}
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -190,6 +218,16 @@ export default function PhotoPicker({
             <li key={e}>{e}</li>
           ))}
         </ul>
+      )}
+
+      {pendingFiles !== null && (
+        <FilterPickerModal
+          files={pendingFiles}
+          onConfirm={(filter, files) => {
+            void handleFilterConfirm(filter, files);
+          }}
+          onCancel={handleFilterCancel}
+        />
       )}
     </div>
   );
