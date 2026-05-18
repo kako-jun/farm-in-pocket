@@ -123,6 +123,10 @@ describe("CellDetail", () => {
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: { nutrients: [], pesticides: [] },
     });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
     renderDetail();
     // 初回 fetch (records) が解決して loading→render が完了するのを待つ。
     // act() warning を出さないため、ここで「読み込み中…」が消えるのを必ず待ってから assert する。
@@ -138,6 +142,10 @@ describe("CellDetail", () => {
   });
 
   it("履歴 fetch で nutrient / pesticide が混合表示される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
     routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: {
@@ -187,6 +195,10 @@ describe("CellDetail", () => {
 
   it("施肥ボタン → フォーム表示 → 保存で POST /nutrient が呼ばれる", async () => {
     routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: { nutrients: [], pesticides: [] },
     });
@@ -234,6 +246,10 @@ describe("CellDetail", () => {
 
   it("農薬ボタン → フォーム表示 → 保存で POST /pesticide が呼ばれる", async () => {
     routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: { nutrients: [], pesticides: [] },
     });
@@ -279,6 +295,10 @@ describe("CellDetail", () => {
 
   it("「容器を変える」リンクで onEditContainer が呼ばれる (編集モーダルへの委譲)", async () => {
     routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: { nutrients: [], pesticides: [] },
     });
@@ -295,6 +315,10 @@ describe("CellDetail", () => {
 
   it("履歴が空なら「まだ記録がありません」を出す", async () => {
     routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),
       response: { nutrients: [], pesticides: [] },
     });
@@ -305,5 +329,84 @@ describe("CellDetail", () => {
     // 容器/用土は「未設定」
     expect(screen.getByTestId("fip-cell-detail-container").textContent).toBe("未設定");
     expect(screen.getByTestId("fip-cell-detail-soil").textContent).toBe("未設定");
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #22: 座標ベース連作履歴 (crop_history) セクション
+  // -------------------------------------------------------------------------
+
+  it("過去履歴が空なら「このセルでの過去履歴はまだありません」を出す", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-crop-history-empty")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("fip-cell-detail-crop-history-empty").textContent).toContain(
+      "過去履歴はまだありません",
+    );
+  });
+
+  it("過去履歴 fetch で年・季節・作物名・科 が一覧表示される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: {
+        records: [
+          {
+            id: 101,
+            gridId: "g1",
+            x: 1,
+            y: 2,
+            plantId: 10,
+            plantName: "トマト",
+            plantNameEn: "Tomato",
+            plantFamily: "ナス科",
+            year: 2026,
+            season: "spring",
+            plantedAt: "2026-04-01",
+            endedAt: "2026-08-01",
+          },
+          {
+            id: 102,
+            gridId: "g1",
+            x: 1,
+            y: 2,
+            plantId: 11,
+            plantName: "バジル",
+            plantNameEn: null,
+            plantFamily: "シソ科",
+            year: 2025,
+            season: "summer",
+            plantedAt: "2025-06-15",
+            endedAt: null,
+          },
+        ],
+      },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-crop-history")).toBeInTheDocument();
+    });
+    const row1 = screen.getByTestId("fip-cell-detail-crop-history-101");
+    expect(row1.textContent).toContain("2026年");
+    expect(row1.textContent).toContain("春");
+    expect(row1.textContent).toContain("トマト");
+    expect(row1.textContent).toContain("ナス科");
+    expect(row1.textContent).toContain("2026-08-01");
+    const row2 = screen.getByTestId("fip-cell-detail-crop-history-102");
+    expect(row2.textContent).toContain("2025年");
+    expect(row2.textContent).toContain("夏");
+    expect(row2.textContent).toContain("バジル");
+    expect(row2.textContent).toContain("シソ科");
   });
 });

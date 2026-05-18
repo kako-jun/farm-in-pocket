@@ -126,6 +126,29 @@ export interface PesticideRecord {
   note: string | null;
 }
 
+// ============================================================================
+// 座標ベース連作履歴 DTO (Issue #22)
+//   * plantFamily は plants.family を凍結保存（denormalize）した値。
+//     plants 改名/削除後も履歴の科分類は壊れない。
+//   * season は month から導出: spring=3-5, summer=6-8, autumn=9-11, winter=12-2
+//   * endedAt は撤去 or 上書き plant の発生で date('now') に書き込まれる。
+// ============================================================================
+
+export interface CropHistoryRecord {
+  id: number;
+  gridId: string;
+  x: number;
+  y: number;
+  plantId: number;
+  plantName: string;
+  plantNameEn: string | null;
+  plantFamily: string;
+  year: number;
+  season: "spring" | "summer" | "autumn" | "winter" | null;
+  plantedAt: string;
+  endedAt: string | null;
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;

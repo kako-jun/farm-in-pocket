@@ -1,3 +1,4 @@
+import type { Season } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import { requireGridOwner, requirePlantingOwner } from "../lib/auth";
 
@@ -12,6 +13,36 @@ type Bindings = {
 
 const createApp = new Hono<{ Bindings: Bindings }>();
 const deleteApp = new Hono<{ Bindings: Bindings }>();
+
+// Issue #22: 座標ベース連作履歴
+// 採用日（planting_date → seeding_date → today）から year と season を導出する。
+// season: spring=3-5, summer=6-8, autumn=9-11, winter=12-2
+function resolveYearAndSeason(
+  plantingDate: string | null,
+  seedingDate: string | null,
+): { year: number; season: Season | null; plantedAt: string } {
+  const source = plantingDate ?? seedingDate;
+  let date: Date;
+  if (source && /^\d{4}-\d{2}-\d{2}/.test(source)) {
+    // 日付部分だけ抜く（時刻があっても OK）
+    date = new Date(`${source.slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) {
+      date = new Date();
+    }
+  } else {
+    date = new Date();
+  }
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1; // 1..12
+  let season: Season | null;
+  if (month >= 3 && month <= 5) season = "spring";
+  else if (month >= 6 && month <= 8) season = "summer";
+  else if (month >= 9 && month <= 11) season = "autumn";
+  else season = "winter"; // 12, 1, 2
+  const plantedAt =
+    source && source.length >= 10 ? source.slice(0, 10) : date.toISOString().slice(0, 10);
+  return { year, season, plantedAt };
+}
 
 // POST /api/grids/:gridId/cells/:x/:y/plantings
 createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
@@ -40,9 +71,10 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   const plantingDate = typeof body.plantingDate === "string" ? body.plantingDate : null;
   const note = typeof body.note === "string" ? body.note : null;
 
-  const plant = await c.env.DB.prepare("SELECT id FROM plants WHERE id = ?")
+  // Issue #22: crop_history に固定保存するため family を denormalize で取る。
+  const plant = await c.env.DB.prepare("SELECT id, family FROM plants WHERE id = ?")
     .bind(plantId)
-    .first<{ id: number }>();
+    .first<{ id: number; family: string }>();
   if (!plant) return c.json({ error: "plant not found" }, 404);
 
   // cell が無ければ作る（grid 存在チェックも）
@@ -83,6 +115,16 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
     )
       .bind(cell.current_planting_id)
       .run();
+    // Issue #22: 対応する crop_history の ended_at も更新する。
+    // 同じ grid_id + x + y で ended_at IS NULL の最新行を ended にする
+    // （複数あれば全て埋めて NULL を残さない）。
+    await c.env.DB.prepare(
+      `UPDATE crop_history
+          SET ended_at = date('now')
+        WHERE grid_id = ? AND x = ? AND y = ? AND ended_at IS NULL`,
+    )
+      .bind(gridId, x, y)
+      .run();
   }
 
   const insertResult = await c.env.DB.prepare(
@@ -97,6 +139,17 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
     `UPDATE cells SET current_planting_id = ?, updated_at = datetime('now') WHERE id = ?`,
   )
     .bind(newId, cell.id)
+    .run();
+
+  // Issue #22: 座標ベース連作履歴を INSERT。
+  // year / season は planting_date → seeding_date → today の優先順で決定。
+  // plant_family は plants.family を凍結保存する（plants 改名/削除後も履歴を維持）。
+  const { year, season, plantedAt } = resolveYearAndSeason(plantingDate, seedingDate);
+  await c.env.DB.prepare(
+    `INSERT INTO crop_history (grid_id, x, y, plant_id, plant_family, year, season, planted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(gridId, x, y, plantId, plant.family, year, season, plantedAt)
     .run();
 
   return c.json(
@@ -117,6 +170,9 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
 // DELETE /api/plantings/:id?pubkey=<hex64>
 // NOTE: 当面は物理削除を維持する（破壊的変更回避）。state='ended' で論理削除に切り替える案は
 // 別 Issue 化予定（kako-jun/farm-in-pocket#13 レビュー SHOULD #5）。
+//
+// Issue #22: planting 自体は物理削除するが、crop_history は残す（連作管理の正本のため）。
+// 対応する crop_history は ended_at を date('now') にだけ更新する。
 deleteApp.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {
@@ -126,6 +182,23 @@ deleteApp.delete("/:id", async (c) => {
   const auth = await requirePlantingOwner(c.env.DB, id, c.req.query("pubkey"));
   if (!auth.ok) return c.json({ error: auth.error }, auth.status);
   const cellId = auth.cellId ?? null;
+
+  // 対応する crop_history の ended_at を埋める前に、cell の grid_id / x / y を取る。
+  // history は座標ベース管理のため、planting からは cell を経由して座標を得る。
+  if (cellId != null) {
+    const cellRow = await c.env.DB.prepare("SELECT grid_id, x, y FROM cells WHERE id = ?")
+      .bind(cellId)
+      .first<{ grid_id: string; x: number; y: number }>();
+    if (cellRow) {
+      await c.env.DB.prepare(
+        `UPDATE crop_history
+            SET ended_at = date('now')
+          WHERE grid_id = ? AND x = ? AND y = ? AND ended_at IS NULL`,
+      )
+        .bind(cellRow.grid_id, cellRow.x, cellRow.y)
+        .run();
+    }
+  }
 
   await c.env.DB.prepare(
     `UPDATE cells SET current_planting_id = NULL, updated_at = datetime('now')

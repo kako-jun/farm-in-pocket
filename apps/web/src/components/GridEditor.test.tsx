@@ -133,6 +133,12 @@ describe("GridEditor", () => {
         /\/api\/grids\/g1\/cells\/1\/1\/records/.test(u) && (i?.method ?? "GET") === "GET",
       response: { nutrients: [], pesticides: [] },
     });
+    // Issue #22: 過去履歴 fetch も空で返す
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/1\/1\/history/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
+    });
     const user = userEvent.setup();
     render(<GridEditor />);
     await user.click(await screen.findByTestId("fip-grid-cell-1-1"));
@@ -185,6 +191,12 @@ describe("GridEditor", () => {
       match: (u, i) =>
         /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
       response: { nutrients: [], pesticides: [] },
+    });
+    // Issue #22: 過去履歴 fetch も空で返す
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/history/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
     });
 
     const user = userEvent.setup();
@@ -483,6 +495,12 @@ describe("GridEditor", () => {
       match: (u, i) =>
         /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
       response: { nutrients: [], pesticides: [] },
+    });
+    // Issue #22: 過去履歴 fetch
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/history/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
     });
     const user = userEvent.setup();
     render(<GridEditor />);

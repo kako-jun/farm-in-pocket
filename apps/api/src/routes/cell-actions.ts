@@ -9,10 +9,12 @@
 // 見つからなければ 404 を返す（自動 upsert はしない）。
 
 import type {
+  CropHistoryRecord,
   NutrientRecord,
   NutrientType,
   PesticideRecord,
   PesticideType,
+  Season,
 } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import { requireGridOwner } from "../lib/auth";
@@ -317,6 +319,66 @@ app.get("/:gridId/cells/:x/:y/records", async (c) => {
     nutrients: (nutrientsRes.results ?? []).map(toNutrientRecord),
     pesticides: (pesticidesRes.results ?? []).map(toPesticideRecord),
   });
+});
+
+// GET /api/grids/:gridId/cells/:x/:y/history?pubkey=<hex64>
+// Issue #22: 座標ベース連作履歴の取得。直近 10 件、時系列降順。
+// plants と JOIN するが、plant が削除されても history は残る前提なので LEFT JOIN ではなく
+// crop_history.plant_family（凍結値）を正本として使う。name は plants から取れれば取る。
+interface CropHistoryRow {
+  id: number;
+  grid_id: string;
+  x: number;
+  y: number;
+  plant_id: number;
+  plant_family: string;
+  year: number;
+  season: Season | null;
+  planted_at: string;
+  ended_at: string | null;
+  plant_name: string | null;
+  plant_name_en: string | null;
+}
+
+function toCropHistoryRecord(row: CropHistoryRow): CropHistoryRecord {
+  return {
+    id: row.id,
+    gridId: row.grid_id,
+    x: row.x,
+    y: row.y,
+    plantId: row.plant_id,
+    plantName: row.plant_name ?? "(削除済み作物)",
+    plantNameEn: row.plant_name_en,
+    plantFamily: row.plant_family,
+    year: row.year,
+    season: row.season,
+    plantedAt: row.planted_at,
+    endedAt: row.ended_at,
+  };
+}
+
+app.get("/:gridId/cells/:x/:y/history", async (c) => {
+  const gridId = c.req.param("gridId");
+  const coords = parseCellCoords(c.req.param("x"), c.req.param("y"));
+  if (!coords.ok) return c.json({ error: coords.error }, 400);
+
+  const auth = await requireGridOwner(c.env.DB, gridId, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
+  const res = await c.env.DB.prepare(
+    `SELECT h.id, h.grid_id, h.x, h.y, h.plant_id, h.plant_family,
+            h.year, h.season, h.planted_at, h.ended_at,
+            p.name AS plant_name, p.name_en AS plant_name_en
+       FROM crop_history h
+       LEFT JOIN plants p ON p.id = h.plant_id
+      WHERE h.grid_id = ? AND h.x = ? AND h.y = ?
+      ORDER BY h.planted_at DESC, h.id DESC
+      LIMIT 10`,
+  )
+    .bind(gridId, coords.x, coords.y)
+    .all<CropHistoryRow>();
+
+  return c.json({ records: (res.results ?? []).map(toCropHistoryRecord) });
 });
 
 export default app;

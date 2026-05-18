@@ -141,7 +141,12 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
 - **環境フラグ**: グリッド単位で「屋外（日向 / 半日陰 / 日陰）/ 室内 / 温室」を選択。室内のときだけ照明（自然光 / 育成ライト / 蛍光灯）を追加で選べる。屋外と室内で容器の選択肢を出し分け。
 - **作物を植える**: セル → 「作物を植える」→ 検索（debounce 300ms）→ 選んだ作物の `plantings` レコードを作成。`seeding_date` は今日に自動セット。ライフサイクル詳細（germination / state 遷移 / 終了タグ）は後続 Issue で。
 - **サイズ変更**: グリッドの size_x / size_y を変えると「過去の連作履歴との対応がリセットされます」確認ダイアログが出る（座標ベースで履歴管理しているため）。
-- **セル詳細・施肥/農薬の記録**（Issue #15）。セルをタップすると詳細モーダルが開き、容器/用土・現在の作物・直近 10 件ずつの履歴を確認でき、「🍃 施肥」「🛡️ 農薬」ボタンで小フォームから種別・量・メモを記録できる（POST `/api/grids/:gridId/cells/:x/:y/{nutrient,pesticide}`）。
+- **連作履歴の座標ベース管理**（Issue #22）。`crop_history` テーブルは `cell_id` ではなく **`grid_id + x + y`** で履歴を保持します。畝の区切りを変えても、同じ座標であれば養分・病気の偏りを追えます。
+  - 履歴行の `plant_family` は **植えた時点の値を凍結**保存（denormalize）。`plants` マスタを後から削除/改名しても過去の科分類は壊れません。
+  - 新しい planting を植えると、前 planting の crop_history は `ended_at = date('now')` で閉じられ、新規行が INSERT されます。
+  - `DELETE /api/plantings/:id` は planting 自体は物理削除しますが、**crop_history は残します**（座標の連作判断材料として必要）。`ended_at` だけ `date('now')` で埋めます。
+  - グリッドの `size_x` / `size_y` を変えると「過去の連作履歴との対応がリセットされます」の確認ダイアログが出ます。座標が変わるため履歴の意味が崩れるからです。
+- **セル詳細・施肥/農薬の記録**（Issue #15）。セルをタップすると詳細モーダルが開き、容器/用土・現在の作物・直近 10 件ずつの履歴・過去の連作履歴（直近 10 件）を確認でき、「🍃 施肥」「🛡️ 農薬」ボタンで小フォームから種別・量・メモを記録できる（POST `/api/grids/:gridId/cells/:x/:y/{nutrient,pesticide}`）。
   - 「💧 水やり」は plantings の watering_settings 統合になるため別 Issue で実装予定。
   - **施肥バッジ**: 直近 30 日以内に施肥していたら右下に緑の点（`●` + 日数）。
   - **農薬バッジ**: 直近 14 日以内に農薬していたら左下に赤の点。
@@ -169,6 +174,7 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `POST   /api/grids/:gridId/cells/:x/:y/nutrient` — 施肥記録（Issue #15）
 - `POST   /api/grids/:gridId/cells/:x/:y/pesticide` — 農薬記録（Issue #15）
 - `GET    /api/grids/:gridId/cells/:x/:y/records?pubkey=<hex64>` — 直近の施肥/農薬を各 10 件返す（Issue #15）
+- `GET    /api/grids/:gridId/cells/:x/:y/history?pubkey=<hex64>` — 座標ベース連作履歴を直近 10 件、時系列降順で返す（Issue #22）
 
 ## 記録（作業ログの投稿）
 
