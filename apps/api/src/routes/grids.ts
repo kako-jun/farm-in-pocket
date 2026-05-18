@@ -72,6 +72,8 @@ interface CellRow {
   current_planting_id: number | null;
   current_plant_id: number | null;
   current_plant_name: string | null;
+  last_fertilized_at: string | null;
+  last_pesticide_at: string | null;
 }
 
 function toGridRecord(row: GridRow, cells: CellRecord[]): GridRecord {
@@ -99,10 +101,14 @@ function toCellRecord(row: CellRow): CellRecord {
     currentPlantingId: row.current_planting_id,
     currentPlantId: row.current_plant_id,
     currentPlantName: row.current_plant_name,
+    lastFertilizedAt: row.last_fertilized_at ?? null,
+    lastPesticideAt: row.last_pesticide_at ?? null,
   };
 }
 
 async function fetchCellsForGrid(db: D1Database, gridId: string): Promise<CellRecord[]> {
+  // Issue #15: 各セルの最新施肥/農薬日付を持ってくる（バッジ表示用）。
+  // サブクエリで cell_id ごとに MAX(applied_at) を取り、LEFT JOIN する。
   const result = await db
     .prepare(
       `SELECT c.id AS id,
@@ -113,10 +119,22 @@ async function fetchCellsForGrid(db: D1Database, gridId: string): Promise<CellRe
               c.soil_type AS soil_type,
               c.current_planting_id AS current_planting_id,
               p.plant_id AS current_plant_id,
-              pl.name AS current_plant_name
+              pl.name AS current_plant_name,
+              n.last_applied AS last_fertilized_at,
+              pe.last_applied AS last_pesticide_at
          FROM cells c
          LEFT JOIN plantings p ON p.id = c.current_planting_id
          LEFT JOIN plants pl ON pl.id = p.plant_id
+         LEFT JOIN (
+           SELECT cell_id, MAX(applied_at) AS last_applied
+             FROM nutrient_records
+            GROUP BY cell_id
+         ) n ON n.cell_id = c.id
+         LEFT JOIN (
+           SELECT cell_id, MAX(applied_at) AS last_applied
+             FROM pesticide_records
+            GROUP BY cell_id
+         ) pe ON pe.cell_id = c.id
         WHERE c.grid_id = ?
         ORDER BY c.y, c.x`,
     )
@@ -329,6 +347,17 @@ app.delete("/:id", async (c) => {
   )
     .bind(id)
     .run();
+  // Issue #15: 養分・農薬記録もカスケード（cells を消す前に cell_id 経由で削除）
+  await c.env.DB.prepare(
+    "DELETE FROM nutrient_records WHERE cell_id IN (SELECT id FROM cells WHERE grid_id = ?)",
+  )
+    .bind(id)
+    .run();
+  await c.env.DB.prepare(
+    "DELETE FROM pesticide_records WHERE cell_id IN (SELECT id FROM cells WHERE grid_id = ?)",
+  )
+    .bind(id)
+    .run();
   await c.env.DB.prepare("DELETE FROM cells WHERE grid_id = ?").bind(id).run();
   await c.env.DB.prepare("DELETE FROM crop_history WHERE grid_id = ?").bind(id).run();
   await c.env.DB.prepare("DELETE FROM grids WHERE id = ?").bind(id).run();
@@ -420,10 +449,20 @@ app.put("/:gridId/cells/:x/:y", async (c) => {
             c.container_type AS container_type, c.soil_type AS soil_type,
             c.current_planting_id AS current_planting_id,
             p.plant_id AS current_plant_id,
-            pl.name AS current_plant_name
+            pl.name AS current_plant_name,
+            n.last_applied AS last_fertilized_at,
+            pe.last_applied AS last_pesticide_at
        FROM cells c
        LEFT JOIN plantings p ON p.id = c.current_planting_id
        LEFT JOIN plants pl ON pl.id = p.plant_id
+       LEFT JOIN (
+         SELECT cell_id, MAX(applied_at) AS last_applied
+           FROM nutrient_records GROUP BY cell_id
+       ) n ON n.cell_id = c.id
+       LEFT JOIN (
+         SELECT cell_id, MAX(applied_at) AS last_applied
+           FROM pesticide_records GROUP BY cell_id
+       ) pe ON pe.cell_id = c.id
       WHERE c.grid_id = ? AND c.x = ? AND c.y = ?`,
   )
     .bind(gridId, x, y)
@@ -448,8 +487,10 @@ app.delete("/:gridId/cells/:x/:y", async (c) => {
     .first<{ id: number }>();
   if (!cell) return c.json({ ok: true });
 
-  // 依存 plantings も手動カスケード
+  // 依存 plantings / nutrient_records / pesticide_records も手動カスケード
   await c.env.DB.prepare("DELETE FROM plantings WHERE cell_id = ?").bind(cell.id).run();
+  await c.env.DB.prepare("DELETE FROM nutrient_records WHERE cell_id = ?").bind(cell.id).run();
+  await c.env.DB.prepare("DELETE FROM pesticide_records WHERE cell_id = ?").bind(cell.id).run();
   await c.env.DB.prepare("DELETE FROM cells WHERE id = ?").bind(cell.id).run();
   return c.json({ ok: true });
 });

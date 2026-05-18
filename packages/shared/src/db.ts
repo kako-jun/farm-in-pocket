@@ -69,6 +69,61 @@ export interface CellRecord {
   currentPlantingId: number | null;
   currentPlantId: number | null;
   currentPlantName: string | null;
+  // バッジ表示用: 最後にやった施肥/農薬の日付（無ければ null）
+  // Issue: kako-jun/farm-in-pocket#15
+  // Phase 2 (#26) で経過時間 fade を実装する。今は閾値（施肥 30 日 / 農薬 14 日）でバッジを出すかの判定にだけ使う
+  lastFertilizedAt: string | null;
+  lastPesticideAt: string | null;
+}
+
+// ============================================================================
+// 養分・農薬記録 DTO (Issue #15)
+// ============================================================================
+
+export type NutrientType =
+  | "nitrogen"
+  | "phosphorus"
+  | "potassium"
+  | "calcium"
+  | "magnesium"
+  | "sulfur"
+  | "iron"
+  | "manganese"
+  | "zinc"
+  | "boron"
+  | "organic"
+  | "other";
+
+export type PesticideType =
+  | "insecticide"
+  | "fungicide"
+  | "herbicide"
+  | "repellent"
+  | "adhesive"
+  | "other";
+
+export interface NutrientRecord {
+  id: number;
+  cellId: number;
+  appliedAt: string;
+  nutrientType: NutrientType;
+  materialId: number | null;
+  amount: number | null;
+  amountUnit: string | null;
+  note: string | null;
+}
+
+export interface PesticideRecord {
+  id: number;
+  cellId: number;
+  appliedAt: string;
+  pesticideType: PesticideType;
+  materialId: number | null;
+  targetTags: string[] | null;
+  amount: number | null;
+  amountUnit: string | null;
+  dilutionRatio: number | null;
+  note: string | null;
 }
 
 export interface GridRecord {

@@ -1,5 +1,6 @@
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
+import cellActionsRouter from "./routes/cell-actions";
 import gridsRouter from "./routes/grids";
 import { plantingsCreateRouter, plantingsDeleteRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
@@ -28,6 +29,7 @@ app.get("/db/health", async (c) => {
 // TODO(#16+): NIP-98 認可を導入する。現状は pubkey をクエリ/body で受ける Phase 1 範囲。
 app.route("/api/grids", gridsRouter);
 app.route("/api/grids", plantingsCreateRouter); // POST /api/grids/:gridId/cells/:x/:y/plantings
+app.route("/api/grids", cellActionsRouter); // POST/GET /api/grids/:gridId/cells/:x/:y/{nutrient,pesticide,records}
 app.route("/api/plants", plantsRouter);
 app.route("/api/plantings", plantingsDeleteRouter);
 
