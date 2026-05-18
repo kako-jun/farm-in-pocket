@@ -29,7 +29,9 @@ import {
   PLANTING_STATE_LABELS_JA,
   daysSince,
   fadeOpacity,
+  hasDilution,
 } from "@farm-in-pocket/shared";
+import type { DilutionCalcResult } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import {
   fetchCellHistory,
@@ -46,6 +48,7 @@ import {
   setWateringInterval,
   updatePlanting,
 } from "../lib/grid-api";
+import DilutionCalculator from "./DilutionCalculator";
 import MaterialPicker from "./MaterialPicker";
 import NutrientTimelineChart from "./charts/NutrientTimelineChart";
 import PhTimelineChart from "./charts/PhTimelineChart";
@@ -366,6 +369,7 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const handleNutrientSaved = async (input: {
     nutrientType: NutrientType;
     amount?: number;
+    amountUnit?: string;
     note?: string;
     materialId?: number;
   }): Promise<void> => {
@@ -388,6 +392,8 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const handlePesticideSaved = async (input: {
     pesticideType: PesticideType;
     amount?: number;
+    amountUnit?: string;
+    dilutionRatio?: number;
     note?: string;
     materialId?: number;
   }): Promise<void> => {
@@ -1015,15 +1021,19 @@ function NutrientQuickForm(props: {
   onSubmit: (input: {
     nutrientType: NutrientType;
     amount?: number;
+    amountUnit?: string;
     note?: string;
     materialId?: number;
   }) => void | Promise<void>;
 }): JSX.Element {
   const [nutrientType, setNutrientType] = useState<NutrientType>("organic");
   const [amount, setAmount] = useState("");
+  const [amountUnit, setAmountUnit] = useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
   const [material, setMaterial] = useState<MaterialRecord | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  // Issue #36: 希釈計算結果（液体肥料 + dilution あり時のみ使う）
+  const [dilutionResult, setDilutionResult] = useState<DilutionCalcResult | null>(null);
   // Issue #35: nutrientType=organic → 固形肥料、それ以外 → 液体肥料を初期フィルタにする。
   // 細かい切替 UI までは出さない（最小実装）。
   const pickerCategory = nutrientType === "organic" ? "fertilizer_solid" : "fertilizer_liquid";
@@ -1092,6 +1102,19 @@ function NutrientQuickForm(props: {
           </button>
         )}
       </div>
+      {/* Issue #36: dilution が定義された資材を選んだら希釈計算サポーターを表示 */}
+      {material && hasDilution(material.dilution) && material.dilution && (
+        <DilutionCalculator
+          dilution={material.dilution}
+          onChange={(r) => {
+            setDilutionResult(r);
+            if (r) {
+              setAmount(String(r.concentrateMl));
+              setAmountUnit("ml");
+            }
+          }}
+        />
+      )}
       <label className="block text-xs">
         量 (任意 / 数値)
         <input
@@ -1119,10 +1142,18 @@ function NutrientQuickForm(props: {
           data-testid="fip-cell-detail-nutrient-submit"
           onClick={() => {
             const num = amount === "" ? undefined : Number(amount);
+            // Issue #36: dilutionResult があれば note に「希釈 Nx」を追記
+            // （nutrient_records には dilution_ratio カラムが無いため）
+            let finalNote = note.trim();
+            if (dilutionResult) {
+              const tag = `希釈 ${dilutionResult.ratio}x`;
+              finalNote = finalNote === "" ? tag : `${finalNote} (${tag})`;
+            }
             void props.onSubmit({
               nutrientType,
               amount: typeof num === "number" && Number.isFinite(num) ? num : undefined,
-              note: note.trim() === "" ? undefined : note.trim(),
+              amountUnit,
+              note: finalNote === "" ? undefined : finalNote,
               materialId: material?.id,
             });
           }}
@@ -1154,15 +1185,20 @@ function PesticideQuickForm(props: {
   onSubmit: (input: {
     pesticideType: PesticideType;
     amount?: number;
+    amountUnit?: string;
+    dilutionRatio?: number;
     note?: string;
     materialId?: number;
   }) => void | Promise<void>;
 }): JSX.Element {
   const [pesticideType, setPesticideType] = useState<PesticideType>("insecticide");
   const [amount, setAmount] = useState("");
+  const [amountUnit, setAmountUnit] = useState<string | undefined>(undefined);
   const [note, setNote] = useState("");
   const [material, setMaterial] = useState<MaterialRecord | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  // Issue #36: 希釈計算結果（dilution あり時のみ使う）
+  const [dilutionResult, setDilutionResult] = useState<DilutionCalcResult | null>(null);
   return (
     <div
       data-testid="fip-cell-detail-pesticide-form"
@@ -1228,6 +1264,19 @@ function PesticideQuickForm(props: {
           </button>
         )}
       </div>
+      {/* Issue #36: dilution が定義された資材を選んだら希釈計算サポーターを表示 */}
+      {material && hasDilution(material.dilution) && material.dilution && (
+        <DilutionCalculator
+          dilution={material.dilution}
+          onChange={(r) => {
+            setDilutionResult(r);
+            if (r) {
+              setAmount(String(r.concentrateMl));
+              setAmountUnit("ml");
+            }
+          }}
+        />
+      )}
       <label className="block text-xs">
         量 (任意 / 数値)
         <input
@@ -1258,6 +1307,8 @@ function PesticideQuickForm(props: {
             void props.onSubmit({
               pesticideType,
               amount: typeof num === "number" && Number.isFinite(num) ? num : undefined,
+              amountUnit,
+              dilutionRatio: dilutionResult ? dilutionResult.ratio : undefined,
               note: note.trim() === "" ? undefined : note.trim(),
               materialId: material?.id,
             });
