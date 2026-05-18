@@ -455,10 +455,18 @@ iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予
 
 `seed_products` テーブルに市販の種袋・苗パック・球根を登録できます（Issue #34）。
 
-- `GET /api/seed-products?q=&plantId=&type=&limit=50` — 検索（name LIKE / plant_id / type / brand）
+- `GET /api/seed-products?q=&plantId=&type=&sort=&limit=50` — 検索（name LIKE / plant_id / type / brand）
 - `GET /api/seed-products/:id` — 単体取得
 - `POST /api/seed-products` — body: `{ pubkey, name, brand?, plantId, type, thumbnailUrl?, affiliateLinks? }`。誰でも登録可能（コミュニティ参加型マスタ）
 - `POST /api/seed-products/:id/use` — `use_count++` と `seed_product_users` への UPSERT で `user_count` を DISTINCT pubkey で集計
+
+`sort` パラメータ（Issue #37）:
+
+| sort | 並び | 用途 |
+|---|---|---|
+| `popular`（デフォルト） | `use_count DESC, user_count DESC, id DESC` | 人気順。Picker のデフォルト |
+| `recent` | `created_at DESC` | 新着順 |
+| `name` | `name ASC` | 名前順 |
 
 「作物を植える」フローで `SeedProductPicker` から検索・選択・新規登録できます。選択された種・苗 ID は plantings.seed_product_id に保存されます。
 
@@ -467,10 +475,11 @@ iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予
 `materials` テーブルに用土・肥料・農薬・道具などの資材を登録できます（Issue #35）。
 種・苗マスタと同じ「コミュニティ参加型」運用で、誰でも追加可能。
 
-- `GET /api/materials?q=&category=&subcategory=&limit=50` — 検索（name/brand LIKE、category/subcategory 完全一致）
+- `GET /api/materials?q=&category=&subcategory=&sort=&limit=50` — 検索（name/brand LIKE、category/subcategory 完全一致）
 - `GET /api/materials/:id` — 単体取得
 - `POST /api/materials` — body: `{ pubkey, name, brand?, category, subcategory?, targetTags?, tags?, dilution?, description?, thumbnailUrl?, affiliateLinks? }`
 - `POST /api/materials/:id/use` — `use_count++` と `material_users` への UPSERT で `user_count` を DISTINCT pubkey で集計
+- `sort` パラメータは seed_products と共通（`popular` / `recent` / `name`、デフォルト `popular`）
 
 ### カテゴリ
 
@@ -514,6 +523,25 @@ iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予
 - `dilution` が無い資材を選んだ場合はサポーターは表示されず、通常の数量入力のままです
 
 計算ミスは薬害や効果不足の直接原因になるため、結果は emerald 系の大きな枠で目立つように表示しています。
+
+### アフィリエイト表示と利用カウント（Issue #37）
+
+seed_products / materials は `affiliate_links: [{ shop, url }]` を持ちます。`SeedProductPicker` / `MaterialPicker` の検索結果カードに、shop 名から自動でラベルとアイコンを当てたボタンを表示します（`AffiliateLinks` コンポーネント、`packages/shared/src/affiliate.ts` の `decorateAffiliate`）。
+
+| shop | ラベル | アイコン |
+|---|---|---|
+| `amazon` | Amazon | 🛒 |
+| `rakuten` | 楽天市場 | 🛍️ |
+| `official` | 公式サイト | 🌐 |
+| `mercari` | メルカリ | 🟧 |
+| `yahoo` | Yahoo!ショッピング | 🟣 |
+| その他 | shop 名そのまま | 🔗 |
+
+- リンクは `target="_blank" rel="noopener noreferrer sponsored"` 固定（アフィリエイト規約上 `sponsored` が推奨）
+- `javascript:` / `data:` / 相対パスなど http(s) 以外の URL は表示時に除外
+- 価格はあえて表示せず、飛び先で判断させます
+- 検索結果カードには `UsageBadge` も併記され、「N人が使っています ／ M回記録されています」表示。0 件のときは「まだ記録なし」
+- 検索のデフォルトソートは `popular`（`use_count DESC, user_count DESC`）なので、利用実績の多いものが上に来ます
 
 ## 設計参照
 

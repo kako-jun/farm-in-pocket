@@ -550,10 +550,14 @@ export async function fetchWeather(region: string, date: string): Promise<Weathe
 
 // ---- seed products (Issue #34) -------------------------------------------
 
+export type SearchSeedProductsSort = "popular" | "recent" | "name";
+
 export interface SearchSeedProductsParams {
   q?: string;
   plantId?: number;
   type?: SeedProductType;
+  /** 並び替え。省略時は API 側 default の "popular" (use_count DESC) */
+  sort?: SearchSeedProductsSort;
   limit?: number;
 }
 
@@ -570,6 +574,7 @@ export async function searchSeedProducts(
   if (params.q && params.q.length > 0) q.set("q", params.q);
   if (typeof params.plantId === "number") q.set("plantId", String(params.plantId));
   if (params.type) q.set("type", params.type);
+  if (params.sort) q.set("sort", params.sort);
   if (typeof params.limit === "number") q.set("limit", String(params.limit));
   const qs = q.toString();
   const data = await jsonFetch<{ products: SeedProductRecord[] }>(
@@ -635,10 +640,14 @@ export async function recordSeedProductUsage(
 
 // ---- materials (Issue #35) -----------------------------------------------
 
+export type SearchMaterialsSort = "popular" | "recent" | "name";
+
 export interface SearchMaterialsParams {
   q?: string;
   category?: MaterialCategory;
   subcategory?: string;
+  /** 並び替え。省略時は API 側 default の "popular" (use_count DESC) */
+  sort?: SearchMaterialsSort;
   limit?: number;
 }
 
@@ -653,6 +662,7 @@ export async function searchMaterials(params: SearchMaterialsParams): Promise<Ma
   if (params.q && params.q.length > 0) q.set("q", params.q);
   if (params.category) q.set("category", params.category);
   if (params.subcategory && params.subcategory.length > 0) q.set("subcategory", params.subcategory);
+  if (params.sort) q.set("sort", params.sort);
   if (typeof params.limit === "number") q.set("limit", String(params.limit));
   const qs = q.toString();
   const data = await jsonFetch<{ materials: MaterialRecord[] }>(

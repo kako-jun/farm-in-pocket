@@ -25,6 +25,8 @@ import { SEED_PRODUCT_TYPES, SEED_PRODUCT_TYPE_LABELS_JA } from "@farm-in-pocket
 import type { JSX } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createSeedProduct, searchSeedProducts } from "../lib/grid-api";
+import AffiliateLinks from "./AffiliateLinks";
+import UsageBadge from "./UsageBadge";
 
 interface SeedProductPickerProps {
   pubkey: string;
@@ -133,24 +135,26 @@ export default function SeedProductPicker(props: SeedProductPickerProps): JSX.El
         )}
         <ul className="divide-y divide-neutral-100">
           {results.map((p) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                data-testid={`fip-seed-product-pick-${p.id}`}
-                onClick={() => void props.onPick(p)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-emerald-50"
-                style={{ minHeight: 44 }}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{p.name}</span>
-                    {p.brand && <span className="ml-1 text-xs text-neutral-500">/ {p.brand}</span>}
-                  </div>
-                  <span className="text-[10px] text-neutral-400">
-                    {SEED_PRODUCT_TYPE_LABELS_JA[p.type]} · {p.useCount}回
+            <li key={p.id} className="px-3 py-2 hover:bg-emerald-50">
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  type="button"
+                  data-testid={`fip-seed-product-pick-${p.id}`}
+                  onClick={() => void props.onPick(p)}
+                  className="flex-1 text-left text-sm"
+                  style={{ minHeight: 44 }}
+                >
+                  <span className="font-medium">{p.name}</span>
+                  {p.brand && <span className="ml-1 text-xs text-neutral-500">/ {p.brand}</span>}
+                  <span className="ml-2 text-[10px] text-neutral-400">
+                    {SEED_PRODUCT_TYPE_LABELS_JA[p.type]}
                   </span>
-                </div>
-              </button>
+                </button>
+                <AffiliateLinks links={p.affiliateLinks} align="row" compact />
+              </div>
+              <div className="mt-1">
+                <UsageBadge useCount={p.useCount} userCount={p.userCount} compact />
+              </div>
             </li>
           ))}
         </ul>

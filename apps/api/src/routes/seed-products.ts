@@ -5,10 +5,15 @@
 // 重複防止は (brand, name, type) の擬似ユニーク（INSERT 前に検索）。
 //
 // エンドポイント:
-//   GET  /api/seed-products?q=&plantId=&type=&limit=50  検索
-//   GET  /api/seed-products/:id                          単体取得
-//   POST /api/seed-products                              新規登録（誰でも可）
-//   POST /api/seed-products/:id/use                      利用カウント加算
+//   GET  /api/seed-products?q=&plantId=&type=&sort=&limit=50  検索
+//   GET  /api/seed-products/:id                                単体取得
+//   POST /api/seed-products                                    新規登録（誰でも可）
+//   POST /api/seed-products/:id/use                            利用カウント加算
+//
+// sort:
+//   - popular (default) … use_count DESC, user_count DESC, id DESC
+//   - recent           … created_at DESC, id DESC
+//   - name             … name ASC, id DESC
 //
 // use_count は呼び出すたびに +1（のべ）。
 // user_count は seed_product_users に (seed_product_id, pubkey) を INSERT OR IGNORE して、
@@ -94,6 +99,7 @@ app.get("/", async (c) => {
   const plantIdRaw = c.req.query("plantId")?.trim() ?? "";
   const typeRaw = c.req.query("type")?.trim() ?? "";
   const limitRaw = c.req.query("limit")?.trim() ?? "";
+  const sortRaw = c.req.query("sort")?.trim() ?? "";
 
   const where: string[] = [];
   const binds: unknown[] = [];
@@ -128,9 +134,22 @@ app.get("/", async (c) => {
     limit = parsed;
   }
 
+  let orderBy = "sp.use_count DESC, sp.user_count DESC, sp.id DESC";
+  if (sortRaw.length > 0) {
+    if (sortRaw === "popular") {
+      orderBy = "sp.use_count DESC, sp.user_count DESC, sp.id DESC";
+    } else if (sortRaw === "recent") {
+      orderBy = "sp.created_at DESC, sp.id DESC";
+    } else if (sortRaw === "name") {
+      orderBy = "sp.name ASC, sp.id DESC";
+    } else {
+      return c.json({ error: "invalid sort" }, 400);
+    }
+  }
+
   const sql = `${SELECT_BASE}${
     where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
-  } ORDER BY sp.use_count DESC, sp.id DESC LIMIT ?`;
+  } ORDER BY ${orderBy} LIMIT ?`;
 
   const result = await c.env.DB.prepare(sql)
     .bind(...binds, limit)
