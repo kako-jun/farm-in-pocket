@@ -92,6 +92,35 @@ export interface PlantSummary {
   category: string;
 }
 
+/**
+ * 植物マスター詳細 DTO (Issue #38)。
+ *
+ * `/plants` 一覧ページや `/plants/:id` 詳細ページで使う。
+ * - `genus` / `description` / `thumbnailUrl` は NULL 許容（マスタによって持っていないものがある）。
+ * - `tags` は plants.tags（JSON 文字列）をパースした文字列配列。パース失敗は `[]`。
+ */
+export interface PlantDetail extends PlantSummary {
+  genus: string | null;
+  tags: string[];
+  description: string | null;
+  thumbnailUrl: string | null;
+}
+
+/**
+ * 「この植物を育てているユーザー」レコード (Issue #38)。
+ *
+ * `/api/plants/:id/users` のレスポンス要素。
+ * - `pubkey` は hex（64 文字）。mypace の bulk profile API でアイコン等を取りに行く。
+ * - `plantingCount` はその plant を含む plantings の総数（state 問わず）。
+ * - `lastPlantedAt` は seeding_date / planting_date / created_at の中で最も新しい日付（YYYY-MM-DD）。
+ *   全部 NULL の planting だけだと NULL になり得る。
+ */
+export interface PlantUserRecord {
+  pubkey: string;
+  plantingCount: number;
+  lastPlantedAt: string | null;
+}
+
 export interface CellRecord {
   id: number;
   gridId: string;

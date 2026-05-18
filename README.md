@@ -267,8 +267,10 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `DELETE /api/grids/:id` — cells / plantings / crop_history も手動カスケード削除
 - `PUT    /api/grids/:gridId/cells/:x/:y` — container_type / soil_type の upsert
 - `DELETE /api/grids/:gridId/cells/:x/:y` — セル削除（VOID 解除や planting 解除には DELETE を使う）
-- `GET    /api/plants?q=&family=&category=` — 作物マスタ検索（最大 50 件）
-- `GET    /api/plants/:id` — 単体取得
+- `GET    /api/plants?q=&family=&category=&tag=&sort=name|id&limit=N` — 作物マスタ検索（最大 200 件、既定 50 件、Issue #38 で `tag` / `sort` / `limit` 拡張）
+- `GET    /api/plants/:id` — 単体取得（Issue #38 で `genus` / `tags` / `description` / `thumbnailUrl` を含む詳細を返すよう拡張）
+- `GET    /api/plants/:id/seed-products` — その plant_id に紐付く種・苗マスタを人気順で返す（Issue #38）
+- `GET    /api/plants/:id/users` — その plant_id を育てている／いたユーザー（pubkey / plantingCount / lastPlantedAt）を返す（Issue #38）
 - `POST   /api/grids/:gridId/cells/:x/:y/plantings` — 作物を植える
 - `DELETE /api/plantings/:id` — 撤去（cells.current_planting_id を NULL に戻す）
 - `POST   /api/grids/:gridId/cells/:x/:y/nutrient` — 施肥記録（Issue #15）
@@ -387,6 +389,20 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `wss://relay.snort.social`
 
 並列に問い合わせて、結果を統合します。一部リレーがダウンしていても他で補完できます。
+
+## 植物カタログ
+
+「ポケ農で扱える 121 件の作物を、育てている人と一緒に眺めて選べる」入口として `/plants` を提供します（Issue #38）。
+
+- **一覧 `/plants`** （SSG）: 検索 (作物名 / 英名)、カテゴリ (vegetable, fruit, flower, herb, houseplant, bulb, succulent, other)、科の絞り込みができるカードグリッド。300ms デバウンスでクライアント側から `GET /api/plants` を叩きます。カードをタップすると詳細ページへ。
+- **詳細 `/plants/:id`** （SSR、`prerender=false`）: 植物本体の情報（科・属・カテゴリ・タグ・説明・サムネ）、関連する種・苗（人気順）、そして **「この植物を育てているユーザー」** 一覧を一画面に集約します。
+  - 「この植物を育てているユーザー」は `GET /api/plants/:id/users` で `plantings → cells → grids.user_pubkey` を集計（最終植え付け日降順、最大 100 件）。mypace の bulk profile API で display_name / picture を肉付けし、`/community/<npub>` の他人の畑ページへリンクします。
+  - 「マイ畑に植える」ボタンは `/grid?plantId=<id>` に遷移します。GridEditor 側でクエリを拾ってヒントバナーを出し、ユーザーは空いているセルをタップして通常の「作物を植える」フローに合流します。
+- **GridEditor / CellDetail からの導線**:
+  - `PlantPicker`（作物検索モーダル）の各候補に「詳細 →」リンクを追加し、`/plants/:id` を新規タブで開けるようにしました。
+  - CellDetail の「現在の作物」セクションに「詳細を見る →」リンクを追加し、すでに植わっている作物のマスター情報へ即ジャンプできます。
+
+ナビゲーションのボトムバーは 5 タブのまま据え置きで、`/plants` には GridEditor の plant ピッカーや CellDetail のリンク経由でアクセスする設計です。今後、植物カタログそのものをタブに昇格させる場合はボトムナビ拡張を別 Issue で扱います。
 
 ## けいふんくん（マスコット）
 

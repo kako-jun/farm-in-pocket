@@ -16,6 +16,7 @@ import {
   deleteCell,
   deleteGrid,
   deletePlanting,
+  fetchPlant,
   listGrids,
   putCell,
   searchPlants,
@@ -196,10 +197,43 @@ export default function GridEditor(): JSX.Element {
   // タブ DOM 参照: activeId が変わったときに横スクロールで中央寄せ
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Issue #38: `/plants/:id` の「マイ畑に植える」ボタンから ?plantId=... 付きで遷移してきたとき、
+  // 「この作物を植える前提でセルを選んでね」という案内バナーを出す（取得は ad-hoc に一度だけ）。
+  // 自動でモーダルを開いてしまうとセル未選択時に困るので、ヒント表示に留める。
+  const [suggestedPlant, setSuggestedPlant] = useState<PlantSummary | null>(null);
+
   useEffect(() => {
     const kp = getMyKeyPair();
     setPubkey(kp?.pubkey ?? null);
     setPubkeyChecked(true);
+  }, []);
+
+  // ?plantId=... を一度だけ読み取って suggestedPlant に詰める。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const raw = sp.get("plantId");
+    if (!raw) return;
+    const id = Number(raw);
+    if (!Number.isInteger(id) || id <= 0) return;
+    let cancelled = false;
+    fetchPlant(id)
+      .then((p) => {
+        if (cancelled) return;
+        setSuggestedPlant({
+          id: p.id,
+          name: p.name,
+          nameEn: p.nameEn,
+          family: p.family,
+          category: p.category,
+        });
+      })
+      .catch(() => {
+        /* ignore: 失敗してもバナーが出ないだけ */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // アクティブタブが画面外にあれば視野に入れる
@@ -602,6 +636,28 @@ export default function GridEditor(): JSX.Element {
         <p data-testid="fip-grid-warning" className="text-sm text-amber-700">
           {warning}
         </p>
+      )}
+
+      {/* Issue #38: /plants/:id からの導線。ヒントを出すだけで、セル選択 → 「作物を植える」は通常フロー。 */}
+      {suggestedPlant && (
+        <div
+          data-testid="fip-grid-suggested-plant"
+          className="rounded border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900"
+        >
+          <p>
+            <span className="font-semibold">🌱 {suggestedPlant.name}</span>
+            <span className="ml-1 text-neutral-600">({suggestedPlant.family})</span>
+            を植える準備ができています。空いているセルをタップして「作物を植える」を選んでください。
+          </p>
+          <button
+            type="button"
+            data-testid="fip-grid-suggested-plant-dismiss"
+            onClick={() => setSuggestedPlant(null)}
+            className="mt-1 text-[10px] text-emerald-700 hover:underline"
+          >
+            閉じる
+          </button>
+        </div>
       )}
 
       {/* タブバー: 横スクロール対応 + 「+」「・・・」ボタン */}
@@ -1504,17 +1560,27 @@ function PlantPicker(props: { onPick: (p: PlantSummary) => void | Promise<void> 
         )}
         <ul className="divide-y divide-neutral-100">
           {results.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="flex items-center justify-between">
               <button
                 type="button"
                 data-testid={`fip-plant-pick-${p.id}`}
                 onClick={() => void props.onPick(p)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-emerald-50"
+                className="block flex-1 px-3 py-2 text-left text-sm hover:bg-emerald-50"
                 style={{ minHeight: 44 }}
               >
                 <span className="font-medium">{p.name}</span>{" "}
                 <span className="text-xs text-neutral-500">({p.family})</span>
               </button>
+              {/* Issue #38: 植物マスターページへ */}
+              <a
+                href={`/plants/${p.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid={`fip-plant-pick-detail-${p.id}`}
+                className="px-2 py-2 text-[10px] text-emerald-700 hover:underline"
+              >
+                詳細 →
+              </a>
             </li>
           ))}
         </ul>

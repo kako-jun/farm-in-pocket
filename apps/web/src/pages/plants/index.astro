@@ -1,0 +1,29 @@
+---
+// 植物カタログ一覧ページ。
+//
+// Issue: kako-jun/farm-in-pocket#38
+// `/plants` を SSG で出す。検索・フィルタはクライアント React island で動かす。
+// 一覧自体は CDN から静的配信されるので、初回表示は非常に軽い。
+
+import PlantsList from "../../components/PlantsList";
+import MainLayout from "../../layouts/MainLayout.astro";
+
+export const prerender = true;
+---
+
+<MainLayout
+  title="植物カタログ — Farm in Pocket (ポケ農)"
+  description="ポケ農で扱える植物の一覧。育て方の特徴と「この植物を育てているユーザー」を探せる。"
+>
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-3xl mx-auto space-y-6">
+    <header>
+      <h1 class="text-2xl font-bold">🌿 植物カタログ</h1>
+      <p class="text-xs text-neutral-500 mt-1">
+        作物名・カテゴリ・科で絞り込めます。タップで詳細へ。
+      </p>
+    </header>
+    <section>
+      <PlantsList client:load />
+    </section>
+  </main>
+</MainLayout>
