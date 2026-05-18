@@ -124,6 +124,11 @@ describe("CellDetail", () => {
       response: { nutrients: [], pesticides: [] },
     });
     renderDetail();
+    // 初回 fetch (records) が解決して loading→render が完了するのを待つ。
+    // act() warning を出さないため、ここで「読み込み中…」が消えるのを必ず待ってから assert する。
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-history-empty")).toBeInTheDocument();
+    });
     expect(screen.getByTestId("fip-cell-detail-modal")).toBeInTheDocument();
     expect(screen.getByTestId("fip-cell-detail-container").textContent).toBe("プランター");
     expect(screen.getByTestId("fip-cell-detail-soil").textContent).toBe("培養土");
@@ -203,6 +208,10 @@ describe("CellDetail", () => {
     });
     const user = userEvent.setup();
     const { onChanged } = renderDetail();
+    // 初回 fetch (records) を待ってから操作する (act() warning 回避)
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-history-empty")).toBeInTheDocument();
+    });
     await user.click(screen.getByTestId("fip-cell-detail-quick-nutrient"));
     expect(screen.getByTestId("fip-cell-detail-nutrient-form")).toBeInTheDocument();
     const amount = screen.getByTestId("fip-cell-detail-nutrient-amount") as HTMLInputElement;
@@ -248,6 +257,10 @@ describe("CellDetail", () => {
     });
     const user = userEvent.setup();
     renderDetail();
+    // 初回 fetch (records) を待ってから操作する (act() warning 回避)
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-history-empty")).toBeInTheDocument();
+    });
     await user.click(screen.getByTestId("fip-cell-detail-quick-pesticide"));
     expect(screen.getByTestId("fip-cell-detail-pesticide-form")).toBeInTheDocument();
     await user.type(screen.getByTestId("fip-cell-detail-pesticide-note"), "テスト");
@@ -272,6 +285,10 @@ describe("CellDetail", () => {
     const onEditContainer = vi.fn();
     const user = userEvent.setup();
     renderDetail({ onEditContainer });
+    // 初回 fetch (records) を待ってからクリックする (act() warning 回避)
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-history-empty")).toBeInTheDocument();
+    });
     await user.click(screen.getByTestId("fip-cell-detail-edit-container"));
     expect(onEditContainer).toHaveBeenCalled();
   });

@@ -342,7 +342,10 @@ export default function GridEditor(): JSX.Element {
   const handleCellTap = (x: number, y: number): void => {
     setOpenCell({ x, y });
     // Issue #15: タップで詳細ビューを開く。編集アクションは詳細ビュー内のリンクから委譲する。
-    setModal("detail");
+    // 鍵が無いと grid 自体取得できないので通常は到達しないが、
+    // 何らかのレースで pubkey が消えた場合は CellDetail (履歴 fetch を打つ) ではなく
+    // 旧 "menu" モーダル (編集系のみ) にフォールバックさせる。タップが無反応になるのを防ぐ。
+    setModal(pubkey ? "detail" : "menu");
   };
 
   const handleSetContainer = async (containerType: ContainerType): Promise<void> => {
@@ -816,8 +819,10 @@ export default function GridEditor(): JSX.Element {
             setModal(null);
             setOpenCell(null);
           }}
-          onChanged={() => {
-            if (pubkey) return reload(pubkey);
+          onChanged={async () => {
+            if (pubkey) {
+              await reload(pubkey);
+            }
           }}
           onEditContainer={() => setModal("container")}
           onEditSoil={() => setModal("soil")}
