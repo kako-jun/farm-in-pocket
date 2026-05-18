@@ -1,5 +1,8 @@
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
+import gridsRouter from "./routes/grids";
+import { plantingsCreateRouter, plantingsDeleteRouter } from "./routes/plantings";
+import plantsRouter from "./routes/plants";
 
 type Bindings = {
   DB: D1Database;
@@ -20,5 +23,12 @@ app.get("/db/health", async (c) => {
   const tables = (result.results ?? []).map((row) => row.name);
   return c.json({ status: "ok", tables, count: tables.length });
 });
+
+// Phase 1 routes (Issue #13)
+// TODO(#16+): NIP-98 認可を導入する。現状は pubkey をクエリ/body で受ける Phase 1 範囲。
+app.route("/api/grids", gridsRouter);
+app.route("/api/grids", plantingsCreateRouter); // POST /api/grids/:gridId/cells/:x/:y/plantings
+app.route("/api/plants", plantsRouter);
+app.route("/api/plantings", plantingsDeleteRouter);
 
 export default app;
