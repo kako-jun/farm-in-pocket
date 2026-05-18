@@ -119,7 +119,7 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `PATCH  /api/grids/:id` — 部分更新。size_x/size_y 変更時はレスポンスに `cropHistoryResetWarning: true`
 - `DELETE /api/grids/:id` — cells / plantings / crop_history も手動カスケード削除
 - `PUT    /api/grids/:gridId/cells/:x/:y` — container_type / soil_type の upsert
-- `DELETE /api/grids/:gridId/cells/:x/:y` — セル削除（VOID 解除や planting 解除に流用）
+- `DELETE /api/grids/:gridId/cells/:x/:y` — セル削除（VOID 解除や planting 解除には DELETE を使う）
 - `GET    /api/plants?q=&family=&category=` — 作物マスタ検索（最大 50 件）
 - `GET    /api/plants/:id` — 単体取得
 - `POST   /api/grids/:gridId/cells/:x/:y/plantings` — 作物を植える

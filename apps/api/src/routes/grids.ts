@@ -8,6 +8,7 @@ import type {
 } from "@farm-in-pocket/shared";
 import { isValidPubkeyHex } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
+import { requireGridOwner } from "../lib/auth";
 import { newId } from "../lib/uuid";
 
 type Bindings = {
@@ -150,6 +151,8 @@ app.get("/", async (c) => {
     .all<GridRow>();
   const grids = gridsRes.results ?? [];
   const out: GridRecord[] = [];
+  // TODO(Phase 2): N+1 解消。grids 取得後に IN(...) で全 cells を一括取得し JS 側で group_by する。
+  // 現状は 1 ユーザー 1〜数 grid 想定なので問題なし。
   for (const g of grids) {
     const cells = await fetchCellsForGrid(c.env.DB, g.id);
     out.push(toGridRecord(g, cells));
@@ -223,6 +226,7 @@ app.post("/", async (c) => {
 app.patch("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{
+    pubkey?: unknown;
     name?: unknown;
     environment?: unknown;
     lighting?: unknown;
@@ -230,6 +234,9 @@ app.patch("/:id", async (c) => {
     sizeY?: unknown;
     sortOrder?: unknown;
   }>();
+
+  const auth = await requireGridOwner(c.env.DB, id, body.pubkey);
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
 
   const existing = await c.env.DB.prepare(
     `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order
@@ -311,15 +318,11 @@ app.patch("/:id", async (c) => {
   });
 });
 
-// DELETE /api/grids/:id
+// DELETE /api/grids/:id?pubkey=<hex64>
 app.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  const existing = await c.env.DB.prepare("SELECT id FROM grids WHERE id = ?")
-    .bind(id)
-    .first<{ id: string }>();
-  if (!existing) {
-    return c.json({ error: "not found" }, 404);
-  }
+  const auth = await requireGridOwner(c.env.DB, id, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
   // D1 では外部キーが enforce されないため、依存テーブルを手動でカスケード削除する。
   await c.env.DB.prepare(
     "DELETE FROM plantings WHERE cell_id IN (SELECT id FROM cells WHERE grid_id = ?)",
@@ -337,6 +340,7 @@ app.delete("/:id", async (c) => {
 // ============================================================================
 
 // PUT /api/grids/:gridId/cells/:x/:y
+// PATCH セマンティクス: body 内で undefined のフィールドは既存値を保持する
 app.put("/:gridId/cells/:x/:y", async (c) => {
   const gridId = c.req.param("gridId");
   const x = Number(c.req.param("x"));
@@ -344,20 +348,38 @@ app.put("/:gridId/cells/:x/:y", async (c) => {
   if (!Number.isInteger(x) || x < 0 || x > 8) return c.json({ error: "invalid x" }, 400);
   if (!Number.isInteger(y) || y < 0 || y > 8) return c.json({ error: "invalid y" }, 400);
 
-  const body = await c.req.json<{ containerType?: unknown; soilType?: unknown }>();
-  let containerType: ContainerType | null = null;
-  let soilType: SoilType | null = null;
-  if (body.containerType !== undefined && body.containerType !== null) {
-    if (!VALID_CONTAINERS.includes(body.containerType as ContainerType)) {
+  const body = await c.req.json<{
+    pubkey?: unknown;
+    containerType?: unknown;
+    soilType?: unknown;
+  }>();
+
+  const auth = await requireGridOwner(c.env.DB, gridId, body.pubkey);
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
+  // バリデーション: 渡されたフィールドだけチェック。undefined は「未指定 = 既存値保持」、
+  // null は明示クリアとして扱う。
+  const containerProvided = Object.hasOwn(body, "containerType");
+  const soilProvided = Object.hasOwn(body, "soilType");
+  let containerType: ContainerType | null | undefined;
+  let soilType: SoilType | null | undefined;
+  if (containerProvided) {
+    if (body.containerType === null) {
+      containerType = null;
+    } else if (!VALID_CONTAINERS.includes(body.containerType as ContainerType)) {
       return c.json({ error: "invalid containerType" }, 400);
+    } else {
+      containerType = body.containerType as ContainerType;
     }
-    containerType = body.containerType as ContainerType;
   }
-  if (body.soilType !== undefined && body.soilType !== null) {
-    if (!VALID_SOILS.includes(body.soilType as SoilType)) {
+  if (soilProvided) {
+    if (body.soilType === null) {
+      soilType = null;
+    } else if (!VALID_SOILS.includes(body.soilType as SoilType)) {
       return c.json({ error: "invalid soilType" }, 400);
+    } else {
+      soilType = body.soilType as SoilType;
     }
-    soilType = body.soilType as SoilType;
   }
 
   const grid = await c.env.DB.prepare("SELECT id, size_x, size_y FROM grids WHERE id = ?")
@@ -368,6 +390,20 @@ app.put("/:gridId/cells/:x/:y", async (c) => {
     return c.json({ error: "cell out of range" }, 400);
   }
 
+  // 既存セルを取って、未指定フィールドは既存値で埋めてから UPSERT する。
+  const existing = await c.env.DB.prepare(
+    "SELECT container_type, soil_type FROM cells WHERE grid_id = ? AND x = ? AND y = ?",
+  )
+    .bind(gridId, x, y)
+    .first<{ container_type: ContainerType | null; soil_type: SoilType | null }>();
+
+  const finalContainer: ContainerType | null = containerProvided
+    ? (containerType as ContainerType | null)
+    : (existing?.container_type ?? null);
+  const finalSoil: SoilType | null = soilProvided
+    ? (soilType as SoilType | null)
+    : (existing?.soil_type ?? null);
+
   await c.env.DB.prepare(
     `INSERT INTO cells (grid_id, x, y, container_type, soil_type)
      VALUES (?, ?, ?, ?, ?)
@@ -376,7 +412,7 @@ app.put("/:gridId/cells/:x/:y", async (c) => {
        soil_type = excluded.soil_type,
        updated_at = datetime('now')`,
   )
-    .bind(gridId, x, y, containerType, soilType)
+    .bind(gridId, x, y, finalContainer, finalSoil)
     .run();
 
   const row = await c.env.DB.prepare(
@@ -396,13 +432,16 @@ app.put("/:gridId/cells/:x/:y", async (c) => {
   return c.json({ cell: toCellRecord(row) });
 });
 
-// DELETE /api/grids/:gridId/cells/:x/:y
+// DELETE /api/grids/:gridId/cells/:x/:y?pubkey=<hex64>
 app.delete("/:gridId/cells/:x/:y", async (c) => {
   const gridId = c.req.param("gridId");
   const x = Number(c.req.param("x"));
   const y = Number(c.req.param("y"));
   if (!Number.isInteger(x) || x < 0 || x > 8) return c.json({ error: "invalid x" }, 400);
   if (!Number.isInteger(y) || y < 0 || y > 8) return c.json({ error: "invalid y" }, 400);
+
+  const auth = await requireGridOwner(c.env.DB, gridId, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
 
   const cell = await c.env.DB.prepare("SELECT id FROM cells WHERE grid_id = ? AND x = ? AND y = ?")
     .bind(gridId, x, y)

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireGridOwner, requirePlantingOwner } from "../lib/auth";
 
 type Bindings = {
   DB: D1Database;
@@ -21,11 +22,16 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   if (!Number.isInteger(y) || y < 0 || y > 8) return c.json({ error: "invalid y" }, 400);
 
   const body = await c.req.json<{
+    pubkey?: unknown;
     plantId?: unknown;
     seedingDate?: unknown;
     plantingDate?: unknown;
     note?: unknown;
   }>();
+
+  const auth = await requireGridOwner(c.env.DB, gridId, body.pubkey);
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
   const plantId = Number(body.plantId);
   if (!Number.isInteger(plantId) || plantId <= 0) {
     return c.json({ error: "invalid plantId" }, 400);
@@ -48,18 +54,36 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
     return c.json({ error: "cell out of range" }, 400);
   }
 
-  let cell = await c.env.DB.prepare("SELECT id FROM cells WHERE grid_id = ? AND x = ? AND y = ?")
+  let cell = await c.env.DB.prepare(
+    "SELECT id, current_planting_id FROM cells WHERE grid_id = ? AND x = ? AND y = ?",
+  )
     .bind(gridId, x, y)
-    .first<{ id: number }>();
+    .first<{ id: number; current_planting_id: number | null }>();
   if (!cell) {
     await c.env.DB.prepare("INSERT INTO cells (grid_id, x, y) VALUES (?, ?, ?)")
       .bind(gridId, x, y)
       .run();
-    cell = await c.env.DB.prepare("SELECT id FROM cells WHERE grid_id = ? AND x = ? AND y = ?")
+    cell = await c.env.DB.prepare(
+      "SELECT id, current_planting_id FROM cells WHERE grid_id = ? AND x = ? AND y = ?",
+    )
       .bind(gridId, x, y)
-      .first<{ id: number }>();
+      .first<{ id: number; current_planting_id: number | null }>();
   }
   if (!cell) return c.json({ error: "cell vanished" }, 500);
+
+  // SHOULD #5: 既存 current_planting があれば ended にしてから新規 planting を作る。
+  // ended にすれば history として残り、cells.current_planting_id は次の INSERT 後に上書きされる。
+  if (cell.current_planting_id != null) {
+    await c.env.DB.prepare(
+      `UPDATE plantings
+          SET state = 'ended',
+              end_date = date('now'),
+              updated_at = datetime('now')
+        WHERE id = ?`,
+    )
+      .bind(cell.current_planting_id)
+      .run();
+  }
 
   const insertResult = await c.env.DB.prepare(
     `INSERT INTO plantings (cell_id, plant_id, seeding_date, planting_date, note)
@@ -90,22 +114,24 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   );
 });
 
-// DELETE /api/plantings/:id
+// DELETE /api/plantings/:id?pubkey=<hex64>
+// NOTE: 当面は物理削除を維持する（破壊的変更回避）。state='ended' で論理削除に切り替える案は
+// 別 Issue 化予定（kako-jun/farm-in-pocket#13 レビュー SHOULD #5）。
 deleteApp.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {
     return c.json({ error: "invalid id" }, 400);
   }
-  const row = await c.env.DB.prepare("SELECT id, cell_id FROM plantings WHERE id = ?")
-    .bind(id)
-    .first<{ id: number; cell_id: number }>();
-  if (!row) return c.json({ error: "not found" }, 404);
+
+  const auth = await requirePlantingOwner(c.env.DB, id, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+  const cellId = auth.cellId ?? null;
 
   await c.env.DB.prepare(
     `UPDATE cells SET current_planting_id = NULL, updated_at = datetime('now')
       WHERE id = ? AND current_planting_id = ?`,
   )
-    .bind(row.cell_id, id)
+    .bind(cellId, id)
     .run();
   await c.env.DB.prepare("DELETE FROM plantings WHERE id = ?").bind(id).run();
   return c.json({ ok: true });

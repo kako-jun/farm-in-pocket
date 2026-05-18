@@ -46,6 +46,18 @@ const CONTAINER_LABELS: Record<ContainerType, string> = {
   void: "VOID（畝の外）",
 };
 
+// セルの容器種類を一目で識別するための絵文字。VOID は別途斜線テクスチャで描画する。
+const CONTAINER_ICONS: Record<Exclude<ContainerType, "void">, string> = {
+  jiue: "🟫",
+  planter: "🪴",
+  pot: "🪴",
+  container: "📦",
+  board_mounted: "🪵",
+  hanging: "⛓️",
+  hydroponics: "💧",
+  other: "⚙️",
+};
+
 const OUTDOOR_CONTAINERS: ContainerType[] = [
   "jiue",
   "planter",
@@ -176,13 +188,10 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleSetContainer = async (containerType: ContainerType): Promise<void> => {
-    if (!grid || !openCell) return;
+    if (!grid || !openCell || !pubkey) return;
     try {
-      const existing = cellMap.get(`${openCell.x},${openCell.y}`);
-      const updated = await putCell(grid.id, openCell.x, openCell.y, {
-        containerType,
-        soilType: existing?.soilType ?? null,
-      });
+      // PUT は PATCH セマンティクスになったので、未指定フィールドは API 側が既存値を保持する。
+      const updated = await putCell(grid.id, pubkey, openCell.x, openCell.y, { containerType });
       replaceCell(updated);
       setModal(null);
     } catch (e) {
@@ -191,13 +200,9 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleSetSoil = async (soilType: SoilType): Promise<void> => {
-    if (!grid || !openCell) return;
+    if (!grid || !openCell || !pubkey) return;
     try {
-      const existing = cellMap.get(`${openCell.x},${openCell.y}`);
-      const updated = await putCell(grid.id, openCell.x, openCell.y, {
-        containerType: existing?.containerType ?? null,
-        soilType,
-      });
+      const updated = await putCell(grid.id, pubkey, openCell.x, openCell.y, { soilType });
       replaceCell(updated);
       setModal(null);
     } catch (e) {
@@ -206,9 +211,9 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleSetVoid = async (): Promise<void> => {
-    if (!grid || !openCell) return;
+    if (!grid || !openCell || !pubkey) return;
     try {
-      const updated = await putCell(grid.id, openCell.x, openCell.y, {
+      const updated = await putCell(grid.id, pubkey, openCell.x, openCell.y, {
         containerType: "void",
         soilType: null,
       });
@@ -220,14 +225,14 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleClearCell = async (): Promise<void> => {
-    if (!grid || !openCell) return;
+    if (!grid || !openCell || !pubkey) return;
     try {
       const existing = cellMap.get(`${openCell.x},${openCell.y}`);
       if (existing?.currentPlantingId) {
-        await deletePlanting(existing.currentPlantingId);
+        await deletePlanting(existing.currentPlantingId, pubkey);
       }
-      await deleteCell(grid.id, openCell.x, openCell.y);
-      if (pubkey) await reload(pubkey);
+      await deleteCell(grid.id, pubkey, openCell.x, openCell.y);
+      await reload(pubkey);
       setModal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "clear failed");
@@ -235,14 +240,14 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handlePlantSelected = async (plant: PlantSummary): Promise<void> => {
-    if (!grid || !openCell) return;
+    if (!grid || !openCell || !pubkey) return;
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await createPlanting(grid.id, openCell.x, openCell.y, {
+      await createPlanting(grid.id, pubkey, openCell.x, openCell.y, {
         plantId: plant.id,
         seedingDate: today,
       });
-      if (pubkey) await reload(pubkey);
+      await reload(pubkey);
       setModal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "plant failed");
@@ -258,9 +263,9 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleEnvChange = async (env: GridEnvironment): Promise<void> => {
-    if (!grid) return;
+    if (!grid || !pubkey) return;
     try {
-      const r = await updateGrid(grid.id, {
+      const r = await updateGrid(grid.id, pubkey, {
         environment: env,
         lighting: env === "indoor" ? grid.lighting : null,
       });
@@ -271,9 +276,9 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleLightingChange = async (light: GridLighting | ""): Promise<void> => {
-    if (!grid) return;
+    if (!grid || !pubkey) return;
     try {
-      const r = await updateGrid(grid.id, { lighting: light === "" ? null : light });
+      const r = await updateGrid(grid.id, pubkey, { lighting: light === "" ? null : light });
       setGrid(r.grid);
     } catch (e) {
       setError(e instanceof Error ? e.message : "update failed");
@@ -287,9 +292,9 @@ export default function GridEditor(): JSX.Element {
   };
 
   const handleResizeConfirm = async (): Promise<void> => {
-    if (!grid || !resizeConfirm) return;
+    if (!grid || !resizeConfirm || !pubkey) return;
     try {
-      const r = await updateGrid(grid.id, {
+      const r = await updateGrid(grid.id, pubkey, {
         sizeX: resizeConfirm.sizeX,
         sizeY: resizeConfirm.sizeY,
       });
@@ -396,7 +401,11 @@ export default function GridEditor(): JSX.Element {
                   min={1}
                   max={9}
                   value={createX}
-                  onChange={(e) => setCreateX(Math.max(1, Math.min(9, Number(e.target.value))))}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return; // NaN なら前回値を維持
+                    setCreateX(Math.max(1, Math.min(9, n)));
+                  }}
                   className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
                 />
               </label>
@@ -407,7 +416,11 @@ export default function GridEditor(): JSX.Element {
                   min={1}
                   max={9}
                   value={createY}
-                  onChange={(e) => setCreateY(Math.max(1, Math.min(9, Number(e.target.value))))}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    setCreateY(Math.max(1, Math.min(9, n)));
+                  }}
                   className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
                 />
               </label>
@@ -489,7 +502,11 @@ export default function GridEditor(): JSX.Element {
               min={1}
               max={9}
               value={grid.sizeX}
-              onChange={(e) => handleResizeRequest(Number(e.target.value), grid.sizeY)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n)) return;
+                handleResizeRequest(n, grid.sizeY);
+              }}
               className="w-16 rounded border border-neutral-300 px-2 py-1"
               data-testid="fip-grid-size-x"
             />
@@ -501,7 +518,11 @@ export default function GridEditor(): JSX.Element {
               min={1}
               max={9}
               value={grid.sizeY}
-              onChange={(e) => handleResizeRequest(grid.sizeX, Number(e.target.value))}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n)) return;
+                handleResizeRequest(grid.sizeX, n);
+              }}
               className="w-16 rounded border border-neutral-300 px-2 py-1"
               data-testid="fip-grid-size-y"
             />
@@ -518,7 +539,9 @@ export default function GridEditor(): JSX.Element {
           Array.from({ length: grid.sizeX }, (_, x) => {
             const cell = cellMap.get(`${x},${y}`);
             const isVoid = cell?.containerType === "void";
-            const hasContainer = cell?.containerType && cell.containerType !== "void";
+            const containerNonVoid: Exclude<ContainerType, "void"> | null =
+              cell?.containerType && cell.containerType !== "void" ? cell.containerType : null;
+            const hasContainer = containerNonVoid !== null;
             const hasPlanting = cell?.currentPlantingId != null;
             const style: React.CSSProperties = isVoid
               ? {
@@ -544,10 +567,15 @@ export default function GridEditor(): JSX.Element {
                 {isVoid ? (
                   <span className="sr-only">VOID</span>
                 ) : hasPlanting ? (
-                  <span>🌱</span>
-                ) : hasContainer ? (
-                  <span className="text-neutral-500 text-[10px]">
-                    {cell?.containerType?.slice(0, 1).toUpperCase()}
+                  <span aria-label="作物中" title="作物中">
+                    🌱
+                  </span>
+                ) : containerNonVoid !== null ? (
+                  <span
+                    aria-label={CONTAINER_LABELS[containerNonVoid]}
+                    title={CONTAINER_LABELS[containerNonVoid]}
+                  >
+                    {CONTAINER_ICONS[containerNonVoid]}
                   </span>
                 ) : (
                   <span className="text-neutral-300 text-[10px]">·</span>

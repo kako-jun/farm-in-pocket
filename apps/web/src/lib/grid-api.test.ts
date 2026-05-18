@@ -67,34 +67,36 @@ describe("grid-api", () => {
     expect(body).toMatchObject({ pubkey: "pk", environment: "outdoor_sunny", sizeX: 5 });
   });
 
-  it("updateGrid は PATCH /api/grids/:id を叩いて warning フラグを返す", async () => {
+  it("updateGrid は PATCH /api/grids/:id を叩いて warning フラグを返す（body に pubkey 添付）", async () => {
     mockFetch({ grid: { id: "g3", cells: [] }, cropHistoryResetWarning: true });
-    const r = await updateGrid("g3", { sizeX: 6 });
+    const r = await updateGrid("g3", "pk", { sizeX: 6 });
     expect(first().url).toBe("/api/grids/g3");
     expect(first().init?.method).toBe("PATCH");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ sizeX: 6, pubkey: "pk" });
     expect(r.cropHistoryResetWarning).toBe(true);
   });
 
-  it("deleteGrid は DELETE /api/grids/:id を叩く", async () => {
+  it("deleteGrid は DELETE /api/grids/:id?pubkey= を叩く", async () => {
     mockFetch({ ok: true });
-    await deleteGrid("g4");
-    expect(first().url).toBe("/api/grids/g4");
+    await deleteGrid("g4", "pk");
+    expect(first().url).toBe("/api/grids/g4?pubkey=pk");
     expect(first().init?.method).toBe("DELETE");
   });
 
-  it("putCell は PUT /api/grids/:id/cells/:x/:y に body を投げる", async () => {
+  it("putCell は PUT /api/grids/:id/cells/:x/:y に body を投げる（pubkey 添付）", async () => {
     mockFetch({ cell: { id: 1, gridId: "g5", x: 1, y: 2 } });
-    await putCell("g5", 1, 2, { containerType: "pot", soilType: "potting_mix" });
+    await putCell("g5", "pk", 1, 2, { containerType: "pot", soilType: "potting_mix" });
     expect(first().url).toBe("/api/grids/g5/cells/1/2");
     expect(first().init?.method).toBe("PUT");
     const body = JSON.parse(String(first().init?.body));
-    expect(body).toEqual({ containerType: "pot", soilType: "potting_mix" });
+    expect(body).toEqual({ containerType: "pot", soilType: "potting_mix", pubkey: "pk" });
   });
 
-  it("deleteCell は DELETE /api/grids/:id/cells/:x/:y を叩く", async () => {
+  it("deleteCell は DELETE /api/grids/:id/cells/:x/:y?pubkey= を叩く", async () => {
     mockFetch({ ok: true });
-    await deleteCell("g6", 0, 0);
-    expect(first().url).toBe("/api/grids/g6/cells/0/0");
+    await deleteCell("g6", "pk", 0, 0);
+    expect(first().url).toBe("/api/grids/g6/cells/0/0?pubkey=pk");
     expect(first().init?.method).toBe("DELETE");
   });
 
@@ -120,16 +122,18 @@ describe("grid-api", () => {
         note: null,
       },
     });
-    const p = await createPlanting("g7", 2, 3, { plantId: 1, seedingDate: "2026-05-17" });
+    const p = await createPlanting("g7", "pk", 2, 3, { plantId: 1, seedingDate: "2026-05-17" });
     expect(first().url).toBe("/api/grids/g7/cells/2/3/plantings");
     expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ plantId: 1, pubkey: "pk" });
     expect(p.id).toBe(7);
   });
 
-  it("deletePlanting は DELETE /api/plantings/:id を叩く", async () => {
+  it("deletePlanting は DELETE /api/plantings/:id?pubkey= を叩く", async () => {
     mockFetch({ ok: true });
-    await deletePlanting(42);
-    expect(first().url).toBe("/api/plantings/42");
+    await deletePlanting(42, "pk");
+    expect(first().url).toBe("/api/plantings/42?pubkey=pk");
     expect(first().init?.method).toBe("DELETE");
   });
 

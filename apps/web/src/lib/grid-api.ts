@@ -81,15 +81,21 @@ export interface UpdateGridResult {
   cropHistoryResetWarning: boolean;
 }
 
-export async function updateGrid(id: string, patch: UpdateGridInput): Promise<UpdateGridResult> {
+export async function updateGrid(
+  id: string,
+  pubkey: string,
+  patch: UpdateGridInput,
+): Promise<UpdateGridResult> {
   return jsonFetch<UpdateGridResult>(url(`/api/grids/${id}`), {
     method: "PATCH",
-    body: JSON.stringify(patch),
+    body: JSON.stringify({ ...patch, pubkey }),
   });
 }
 
-export async function deleteGrid(id: string): Promise<void> {
-  await jsonFetch<{ ok: true }>(url(`/api/grids/${id}`), { method: "DELETE" });
+export async function deleteGrid(id: string, pubkey: string): Promise<void> {
+  await jsonFetch<{ ok: true }>(url(`/api/grids/${id}?pubkey=${encodeURIComponent(pubkey)}`), {
+    method: "DELETE",
+  });
 }
 
 // ---- cells ----------------------------------------------------------------
@@ -101,21 +107,28 @@ export interface PutCellInput {
 
 export async function putCell(
   gridId: string,
+  pubkey: string,
   x: number,
   y: number,
   input: PutCellInput,
 ): Promise<CellRecord> {
   const data = await jsonFetch<{ cell: CellRecord }>(url(`/api/grids/${gridId}/cells/${x}/${y}`), {
     method: "PUT",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, pubkey }),
   });
   return data.cell;
 }
 
-export async function deleteCell(gridId: string, x: number, y: number): Promise<void> {
-  await jsonFetch<{ ok: true }>(url(`/api/grids/${gridId}/cells/${x}/${y}`), {
-    method: "DELETE",
-  });
+export async function deleteCell(
+  gridId: string,
+  pubkey: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  await jsonFetch<{ ok: true }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}?pubkey=${encodeURIComponent(pubkey)}`),
+    { method: "DELETE" },
+  );
 }
 
 // ---- plants ---------------------------------------------------------------
@@ -147,6 +160,7 @@ export interface PlantingCreated {
 
 export async function createPlanting(
   gridId: string,
+  pubkey: string,
   x: number,
   y: number,
   input: CreatePlantingInput,
@@ -155,12 +169,14 @@ export async function createPlanting(
     url(`/api/grids/${gridId}/cells/${x}/${y}/plantings`),
     {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, pubkey }),
     },
   );
   return data.planting;
 }
 
-export async function deletePlanting(id: number): Promise<void> {
-  await jsonFetch<{ ok: true }>(url(`/api/plantings/${id}`), { method: "DELETE" });
+export async function deletePlanting(id: number, pubkey: string): Promise<void> {
+  await jsonFetch<{ ok: true }>(url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`), {
+    method: "DELETE",
+  });
 }
