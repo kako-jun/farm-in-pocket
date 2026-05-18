@@ -20,7 +20,7 @@
 //   - 値が変わると文言を再選択して読み上げる
 //   - 同じ kind を再発火したいときに increment する
 
-import type { JSX } from "react";
+import type { JSX, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTts } from "../../hooks/useTts";
 import { KeifunFace } from "./icons";
@@ -129,11 +129,21 @@ export default function KeifunMascot({
     onClose?.();
   };
 
+  const handleBubbleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    // Enter / Space で延長（button 相当のキーボード操作）
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleBubbleClick();
+    }
+  };
+
   return (
-    <output
+    <div
       className={containerClass}
       data-testid="fip-keifun-mascot"
       data-placement={placement}
+      // biome-ignore lint/a11y/useSemanticElements: <output> は form 結果用で、ここはマスコット通知の live region。SR には role=status で「通知」として読ませたい
+      role="status"
       aria-live="polite"
     >
       {/* アイコン */}
@@ -149,9 +159,12 @@ export default function KeifunMascot({
 
       {/* 吹き出し */}
       <div className="relative max-w-xs">
-        <button
-          type="button"
+        <div
           onClick={handleBubbleClick}
+          onKeyDown={handleBubbleKeyDown}
+          // biome-ignore lint/a11y/useSemanticElements: <button> にすると内部 <label>/<input> がボタン子孫になり DOM 仕様違反。div + role=button で button-in-button 入れ子を避ける
+          role="button"
+          tabIndex={0}
           data-testid="fip-keifun-mascot-bubble"
           className="relative block w-full text-left rounded-2xl bg-white px-4 py-3 shadow-bevel border border-neutral-200"
         >
@@ -176,7 +189,7 @@ export default function KeifunMascot({
               className="flex-1 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-400"
             />
           </div>
-        </button>
+        </div>
 
         {/* ミュートトグル */}
         {supported && (
@@ -218,6 +231,6 @@ export default function KeifunMascot({
           </button>
         )}
       </div>
-    </output>
+    </div>
   );
 }
