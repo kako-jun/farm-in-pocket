@@ -32,6 +32,9 @@ interface PlantingFullRow {
   cell_id: number;
   plant_id: number;
   seed_product_id: number | null;
+  // Issue #34 レビュー MUST-1: 振り返りビューでも seed_product 名を返す。
+  // 各クエリで LEFT JOIN seed_products するので、ここでは row 型として保持するだけ。
+  seed_product_name: string | null;
   state: PlantingState;
   seeding_date: string | null;
   germination_date: string | null;
@@ -51,6 +54,7 @@ function toPlantingRecord(row: PlantingFullRow): PlantingRecord {
     cellId: row.cell_id,
     plantId: row.plant_id,
     seedProductId: row.seed_product_id,
+    seedProductName: row.seed_product_name,
     state: row.state,
     seedingDate: row.seeding_date,
     germinationDate: row.germination_date,
@@ -249,11 +253,13 @@ app.get("/:pubkey/plantings-by-plant", async (c) => {
             p.seeding_date, p.germination_date, p.planting_date, p.end_date, p.end_tag,
             p.seeding_depth_cm, p.plant_spacing_cm, p.row_spacing_cm,
             p.failure_memo, p.note,
-            pl.name AS plant_name, pl.family AS plant_family
+            pl.name AS plant_name, pl.family AS plant_family,
+            sp.name AS seed_product_name
        FROM plantings p
        JOIN cells c ON c.id = p.cell_id
        JOIN grids g ON g.id = c.grid_id
        JOIN plants pl ON pl.id = p.plant_id
+       LEFT JOIN seed_products sp ON sp.id = p.seed_product_id
       WHERE g.user_pubkey = ?
       ORDER BY p.plant_id ASC, p.id DESC`,
   )
@@ -327,11 +333,13 @@ app.get("/:pubkey/failures", async (c) => {
             p.seeding_date, p.germination_date, p.planting_date, p.end_date, p.end_tag,
             p.seeding_depth_cm, p.plant_spacing_cm, p.row_spacing_cm,
             p.failure_memo, p.note,
-            pl.name AS plant_name, pl.family AS plant_family
+            pl.name AS plant_name, pl.family AS plant_family,
+            sp.name AS seed_product_name
        FROM plantings p
        JOIN cells c ON c.id = p.cell_id
        JOIN grids g ON g.id = c.grid_id
        LEFT JOIN plants pl ON pl.id = p.plant_id
+       LEFT JOIN seed_products sp ON sp.id = p.seed_product_id
       WHERE g.user_pubkey = ?
         AND p.state = 'ended'
         AND p.end_tag IN (${placeholders})

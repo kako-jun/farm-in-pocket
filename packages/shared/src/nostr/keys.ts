@@ -44,6 +44,24 @@ export function isValidSecretKey(secretKey: unknown): secretKey is Uint8Array {
 }
 
 /**
+ * pubkey hex を「保存・比較に使える正規化済み hex64 文字列」に変換する。
+ * - Nostr の pubkey hex は大文字でも小文字でも valid だが、本リポでは
+ *   小文字で正規化したものを正本としているため、ここで toLowerCase する。
+ * - 形式不正なら null を返す（呼び出し側で 400 を組み立てる）。
+ *
+ * Issue #34 レビュー MUST-4: POST /seed-products や POST /materials など、複数の
+ * エンドポイントで個別に `.toLowerCase()` を書いていると忘れた所だけ大文字が DB に
+ * 入り、後段の照合で「同じ鍵なのに違うユーザー扱い」になるバグを生む。共通化する。
+ */
+export function normalizePubkey(pubkey: unknown): string | null {
+  if (typeof pubkey !== "string") return null;
+  if (pubkey.length === 0) return null;
+  const lower = pubkey.toLowerCase();
+  if (!isValidPubkeyHex(lower)) return null;
+  return lower;
+}
+
+/**
  * pubkey hex (64 文字、x-only) のバリデーション。
  * Nostr イベントの `pubkey` フィールドや `npub` decode 結果をチェックする用途。
  */

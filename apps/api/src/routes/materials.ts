@@ -2,7 +2,10 @@
 //
 // 用土・肥料・農薬・道具など、栽培で使う「資材」のコミュニティ参加型マスタ。
 // seed_products (#34) と同パターンで、当面は誰でも登録可能。
-// 重複防止は (brand, name, category) の擬似ユニーク（INSERT 前に検索）。
+// 重複防止は (COALESCE(brand,''), name, category) の物理 UNIQUE INDEX
+// (migrations/0010) と「INSERT 前に SELECT → 既存があれば返す」のハイブリッド。
+// SELECT で空でも別の並行リクエストが先に INSERT 済みのケースは UNIQUE 違反として
+// catch し、再 SELECT で既存行を返すので、レース時も重複が DB に入らない。
 //
 // エンドポイント:
 //   GET  /api/materials?q=&category=&subcategory=&sort=&limit=50  検索
@@ -30,8 +33,8 @@ import {
   isValidMaterialCategory,
   isValidMaterialDilution,
   isValidPesticideSubcategory,
-  isValidPubkeyHex,
   isValidTagArray,
+  normalizePubkey,
 } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 
@@ -227,9 +230,16 @@ app.post("/", async (c) => {
     affiliateLinks?: unknown;
   }>();
 
-  if (typeof body.pubkey !== "string" || !isValidPubkeyHex(body.pubkey)) {
+  // Issue #34 レビュー MUST-4: pubkey は normalizePubkey で hex64 小文字に正規化する。
+  // 形式不正なら 400。各エンドポイントで個別に toLowerCase していると大文字混入の余地が
+  // 残るため、共有ユーティリティに集約。
+  const pubkey = normalizePubkey(body.pubkey);
+  if (pubkey === null) {
     return c.json({ error: "invalid pubkey" }, 400);
   }
+  // pubkey は今後 INSERT 時点では使わない（material_users 側で記録）が、形式チェックは
+  // 後段で扱う API のために維持する。将来 created_by を追加する余地も残しておく。
+  void pubkey;
   if (typeof body.name !== "string" || body.name.trim().length === 0) {
     return c.json({ error: "invalid name" }, 400);
   }
@@ -319,6 +329,9 @@ app.post("/", async (c) => {
   }
 
   // 擬似ユニーク (brand, name, category)。brand=NULL は IS NULL で比較する必要がある。
+  // Issue #34 レビュー MUST-2: ここの SELECT は「先勝ち」を返すだけで、レースで両方 SELECT が
+  // 空ヒットすると INSERT が両方走るので、最終防衛として UNIQUE INDEX (migrations/0010) を
+  // 敷き、INSERT を try/catch して UNIQUE 違反は再 SELECT で既存行を返す。
   const dupSql =
     brand === null
       ? `${SELECT_BASE} WHERE m.name = ? AND m.category = ? AND m.brand IS NULL`
@@ -336,29 +349,45 @@ app.post("/", async (c) => {
   const dilutionJson = dilution ? JSON.stringify(dilution) : null;
   const affiliateLinksJson = affiliateLinks ? JSON.stringify(affiliateLinks) : null;
 
-  const insertResult = await c.env.DB.prepare(
-    `INSERT INTO materials (
-       name, brand, category, subcategory,
-       target_tags, tags, dilution, description,
-       thumbnail_url, affiliate_links
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      name,
-      brand,
-      category,
-      subcategory,
-      targetTagsJson,
-      tagsJson,
-      dilutionJson,
-      description,
-      thumbnailUrl,
-      affiliateLinksJson,
+  let newId: number;
+  try {
+    const insertResult = await c.env.DB.prepare(
+      `INSERT INTO materials (
+         name, brand, category, subcategory,
+         target_tags, tags, dilution, description,
+         thumbnail_url, affiliate_links
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run();
-
-  const newId = insertResult.meta?.last_row_id;
-  if (typeof newId !== "number") {
+      .bind(
+        name,
+        brand,
+        category,
+        subcategory,
+        targetTagsJson,
+        tagsJson,
+        dilutionJson,
+        description,
+        thumbnailUrl,
+        affiliateLinksJson,
+      )
+      .run();
+    const id = insertResult.meta?.last_row_id;
+    if (typeof id !== "number") {
+      return c.json({ error: "insert failed" }, 500);
+    }
+    newId = id;
+  } catch (e) {
+    // D1 / SQLite の UNIQUE 違反メッセージは "UNIQUE constraint failed" を含む。
+    // 並行 INSERT で勝った側のレコードを SELECT して duplicated:true で返す。
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("UNIQUE constraint failed")) {
+      const race = await c.env.DB.prepare(dupSql)
+        .bind(...dupBinds)
+        .first<MaterialRow>();
+      if (race) {
+        return c.json({ material: toRecord(race), duplicated: true });
+      }
+    }
     return c.json({ error: "insert failed" }, 500);
   }
   const row = await c.env.DB.prepare(`${SELECT_BASE} WHERE m.id = ?`)
@@ -381,11 +410,11 @@ app.post("/:id/use", async (c) => {
     return c.json({ error: "invalid id" }, 400);
   }
   const body = await c.req.json<{ pubkey?: unknown }>().catch(() => ({}) as { pubkey?: unknown });
-  const rawPubkey = body.pubkey;
-  if (typeof rawPubkey !== "string" || !isValidPubkeyHex(rawPubkey)) {
+  // Issue #34 レビュー MUST-4: pubkey は normalizePubkey 経由で hex64 小文字に正規化する。
+  const pubkey = normalizePubkey(body.pubkey);
+  if (pubkey === null) {
     return c.json({ error: "invalid pubkey" }, 400);
   }
-  const pubkey = rawPubkey.toLowerCase();
 
   const exists = await c.env.DB.prepare("SELECT id FROM materials WHERE id = ?")
     .bind(id)

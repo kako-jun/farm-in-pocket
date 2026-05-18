@@ -165,6 +165,35 @@ describe("grid-api", () => {
     expect(result.planting.id).toBe(7);
   });
 
+  // Issue #34 レビュー MUST-1: seedProductId を渡すと POST body に乗る
+  it("createPlanting は seedProductId を body に乗せる (Issue #34)", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 8,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: 42,
+        seedingDate: "2026-05-17",
+        plantingDate: null,
+        note: null,
+      },
+    });
+    const result = await createPlanting("g7", "pk", 2, 3, {
+      plantId: 1,
+      seedingDate: "2026-05-17",
+      seedProductId: 42,
+    });
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({
+      plantId: 1,
+      pubkey: "pk",
+      seedProductId: 42,
+    });
+    if (!result.planted) throw new Error("expected planted=true");
+    expect(result.planting.seedProductId).toBe(42);
+  });
+
   // -------------------------------------------------------------------------
   // Issue #23: 連作障害警告
   // -------------------------------------------------------------------------

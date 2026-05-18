@@ -2,7 +2,10 @@
 //
 // 市販の種袋・苗パック・球根の商品マスタ。コミュニティ参加型なので
 // 当面は誰でも登録可能（pubkey の存在チェックは行うが、認可は無い）。
-// 重複防止は (brand, name, type) の擬似ユニーク（INSERT 前に検索）。
+// 重複防止は (COALESCE(brand,''), name, type) の物理 UNIQUE INDEX
+// (migrations/0010) と「INSERT 前に SELECT → 既存があれば返す」のハイブリッド。
+// SELECT で空でも別の並行リクエストが先に INSERT 済みのケースは UNIQUE 違反として
+// catch し、再 SELECT で既存行を返すので、レース時も重複が DB に入らない。
 //
 // エンドポイント:
 //   GET  /api/seed-products?q=&plantId=&type=&sort=&limit=50  検索
@@ -26,8 +29,8 @@ import type {
 } from "@farm-in-pocket/shared";
 import {
   isValidAffiliateLinks,
-  isValidPubkeyHex,
   isValidSeedProductType,
+  normalizePubkey,
 } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 
@@ -190,9 +193,12 @@ app.post("/", async (c) => {
     affiliateLinks?: unknown;
   }>();
 
-  if (typeof body.pubkey !== "string" || !isValidPubkeyHex(body.pubkey)) {
+  // Issue #34 レビュー MUST-4: pubkey は normalizePubkey 経由で hex64 小文字に正規化する。
+  const pubkey = normalizePubkey(body.pubkey);
+  if (pubkey === null) {
     return c.json({ error: "invalid pubkey" }, 400);
   }
+  void pubkey; // 現状 INSERT 時点では使わない（seed_product_users 側で記録）が、形式チェックは維持。
   if (typeof body.name !== "string" || body.name.trim().length === 0) {
     return c.json({ error: "invalid name" }, 400);
   }
@@ -257,15 +263,31 @@ app.post("/", async (c) => {
   }
 
   const affiliateLinksJson = affiliateLinks ? JSON.stringify(affiliateLinks) : null;
-  const insertResult = await c.env.DB.prepare(
-    `INSERT INTO seed_products (name, brand, plant_id, type, thumbnail_url, affiliate_links)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(name, brand, plantId, type, thumbnailUrl, affiliateLinksJson)
-    .run();
-
-  const newId = insertResult.meta?.last_row_id;
-  if (typeof newId !== "number") {
+  // Issue #34 レビュー MUST-2: 並行 INSERT のレース耐性。UNIQUE INDEX 違反は catch して
+  // 既存行を SELECT し直し duplicated:true で返す。
+  let newId: number;
+  try {
+    const insertResult = await c.env.DB.prepare(
+      `INSERT INTO seed_products (name, brand, plant_id, type, thumbnail_url, affiliate_links)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(name, brand, plantId, type, thumbnailUrl, affiliateLinksJson)
+      .run();
+    const id = insertResult.meta?.last_row_id;
+    if (typeof id !== "number") {
+      return c.json({ error: "insert failed" }, 500);
+    }
+    newId = id;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("UNIQUE constraint failed")) {
+      const race = await c.env.DB.prepare(dupSql)
+        .bind(...dupBinds)
+        .first<SeedProductRow>();
+      if (race) {
+        return c.json({ product: toRecord(race), duplicated: true });
+      }
+    }
     return c.json({ error: "insert failed" }, 500);
   }
   const row = await c.env.DB.prepare(`${SELECT_BASE} WHERE sp.id = ?`)
@@ -289,11 +311,11 @@ app.post("/:id/use", async (c) => {
     return c.json({ error: "invalid id" }, 400);
   }
   const body = await c.req.json<{ pubkey?: unknown }>().catch(() => ({}) as { pubkey?: unknown });
-  const rawPubkey = body.pubkey;
-  if (typeof rawPubkey !== "string" || !isValidPubkeyHex(rawPubkey)) {
+  // Issue #34 レビュー MUST-4: pubkey は normalizePubkey 経由で hex64 小文字に正規化する。
+  const pubkey = normalizePubkey(body.pubkey);
+  if (pubkey === null) {
     return c.json({ error: "invalid pubkey" }, 400);
   }
-  const pubkey = rawPubkey.toLowerCase();
 
   const exists = await c.env.DB.prepare("SELECT id FROM seed_products WHERE id = ?")
     .bind(id)

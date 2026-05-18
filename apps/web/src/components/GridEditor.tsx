@@ -6,6 +6,7 @@ import type {
   GridRecord,
   PlantSummary,
   RotationWarning,
+  SeedProductRecord,
   SoilType,
 } from "@farm-in-pocket/shared";
 import { daysSince, fadeOpacity } from "@farm-in-pocket/shared";
@@ -19,6 +20,7 @@ import {
   fetchPlant,
   listGrids,
   putCell,
+  recordSeedProductUsage,
   searchPlants,
   updateGrid,
 } from "../lib/grid-api";
@@ -26,6 +28,7 @@ import { getMyKeyPair } from "../lib/keys";
 import { cacheGrids, loadCachedGrids } from "../lib/offline-cache";
 import CellDetail from "./CellDetail";
 import GridThumbnail from "./GridThumbnail";
+import SeedProductPicker from "./SeedProductPicker";
 
 const ENVIRONMENT_LABELS: Record<GridEnvironment, string> = {
   outdoor_sunny: "屋外（日向）",
@@ -193,10 +196,19 @@ export default function GridEditor(): JSX.Element {
   // Issue #23: 連作障害警告ダイアログ。
   // PlantPicker で選んだ作物が、対象座標の crop_history に同 family の最新行を持つときに開く。
   // OK 押下で confirmRotation: true を再 POST する。キャンセルでフォーム（plant モーダル）に戻す。
+  // Issue #34 レビュー MUST-1: 「分かった上で植える」承諾時にも seed_product を保持する必要が
+  // あるため、rotationConfirm の rerun でも seedProductId を引き継ぐ。
   const [rotationConfirm, setRotationConfirm] = useState<{
     plant: PlantSummary;
     warning: RotationWarning;
+    seedProductId: number | null;
   } | null>(null);
+
+  // Issue #34: plant 選択 → SeedProductPicker（任意）→ createPlanting というフロー。
+  // PlantPicker で選んだ plant は一度ここに退避し、SeedProductPicker で onPick / onSkip
+  // のいずれかが呼ばれてから createPlanting を打つ。
+  // SeedProductPicker が出ている間は modal === "seed-product"。
+  const [pendingPlant, setPendingPlant] = useState<PlantSummary | null>(null);
 
   // タブ DOM 参照: activeId が変わったときに横スクロールで中央寄せ
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -510,9 +522,12 @@ export default function GridEditor(): JSX.Element {
   // 1) 初回 POST は `confirmRotation: false` で送る → 警告条件成立なら planted=false で返ってくる。
   // 2) その場合は確認ダイアログ（rotationConfirm）を出し、OK を押されたら confirmRotation: true で再 POST する。
   // 3) 警告条件不成立、または再 POST 成功なら通常通り reload + setModal(null)。
+  // Issue #34: seedProductId を任意で受け取り、payload に乗せる。承諾済みの場合は
+  // 引き続き同じ seedProductId で再 POST するので、引数で引き回す。
   const runCreatePlanting = async (
     plant: PlantSummary,
     confirmRotation: boolean,
+    seedProductId: number | null,
   ): Promise<void> => {
     if (!grid || !openCell || !pubkey) return;
     try {
@@ -521,13 +536,20 @@ export default function GridEditor(): JSX.Element {
         plantId: plant.id,
         seedingDate: today,
         confirmRotation,
+        ...(seedProductId != null ? { seedProductId } : {}),
       });
       if (!result.planted) {
-        // 警告のみ。確認ダイアログへ。
-        setRotationConfirm({ plant, warning: result.rotationWarning });
+        // 警告のみ。確認ダイアログへ。seed_product もペアで保持して再 POST 時に乗せる。
+        setRotationConfirm({ plant, warning: result.rotationWarning, seedProductId });
         return;
       }
       setRotationConfirm(null);
+      setPendingPlant(null);
+      // Issue #34: 種・苗が指定されていれば利用カウントを fire-and-forget で加算する。
+      // 失敗してもユーザー体験には影響させない（catch だけ握り潰す）。
+      if (seedProductId != null) {
+        void recordSeedProductUsage(seedProductId, pubkey).catch(() => undefined);
+      }
       await reload(pubkey, showArchived);
       setModal(null);
     } catch (e) {
@@ -535,15 +557,35 @@ export default function GridEditor(): JSX.Element {
     }
   };
 
-  const handlePlantSelected = async (plant: PlantSummary): Promise<void> => {
-    await runCreatePlanting(plant, false);
+  // Issue #34: PlantPicker → SeedProductPicker → createPlanting の中継。
+  // PlantPicker で選んだ plant を pendingPlant に積み、SeedProductPicker（seed-product モーダル）
+  // に遷移する。鍵が無い等の致命ケースだけ即座に createPlanting にフォールバックする。
+  const handlePlantSelected = (plant: PlantSummary): void => {
+    if (!pubkey) {
+      // pubkey が無いとそもそも createPlanting も SeedProductPicker も成り立たないので、何もしない。
+      return;
+    }
+    setPendingPlant(plant);
+    setModal("seed-product");
+  };
+
+  // SeedProductPicker で「これを使った」が選ばれた。createPlanting に seedProductId を渡す。
+  const handleSeedProductPicked = async (product: SeedProductRecord): Promise<void> => {
+    if (!pendingPlant) return;
+    await runCreatePlanting(pendingPlant, false, product.id);
+  };
+
+  // SeedProductPicker で「種袋なしで進める」が選ばれた。seedProductId を渡さず createPlanting。
+  const handleSeedProductSkip = async (): Promise<void> => {
+    if (!pendingPlant) return;
+    await runCreatePlanting(pendingPlant, false, null);
   };
 
   const handleRotationConfirmOk = async (): Promise<void> => {
     if (!rotationConfirm) return;
-    const plant = rotationConfirm.plant;
+    const { plant, seedProductId } = rotationConfirm;
     setRotationConfirm(null);
-    await runCreatePlanting(plant, true);
+    await runCreatePlanting(plant, true, seedProductId);
   };
 
   const handleRotationConfirmCancel = (): void => {
@@ -1018,7 +1060,7 @@ export default function GridEditor(): JSX.Element {
         />
       )}
 
-      {modal !== null && modal !== "detail" && openCell && (
+      {modal !== null && modal !== "detail" && modal !== "seed-product" && openCell && (
         <CellModal
           openCell={openCell}
           grid={grid}
@@ -1034,6 +1076,41 @@ export default function GridEditor(): JSX.Element {
           onClear={handleClearCell}
           onPlantSelected={handlePlantSelected}
         />
+      )}
+
+      {/* Issue #34: plant 選択直後の SeedProductPicker。
+       *   onCancel（モーダル右上 ✕）は pendingPlant をクリアして閉じるだけ。
+       *   実用上「plant 選び直し」が欲しい場合は再度「作物を植える」を踏み直す導線にする。 */}
+      {modal === "seed-product" && openCell && pubkey && pendingPlant && (
+        <div
+          data-testid="fip-seed-product-modal"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+        >
+          <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">使った種・苗を選ぶ</h3>
+              <button
+                type="button"
+                data-testid="fip-seed-product-modal-close"
+                onClick={() => {
+                  setPendingPlant(null);
+                  setModal(null);
+                  setOpenCell(null);
+                }}
+                className="text-sm text-neutral-500"
+              >
+                閉じる
+              </button>
+            </div>
+            <SeedProductPicker
+              pubkey={pubkey}
+              plantId={pendingPlant.id}
+              plantName={pendingPlant.name}
+              onPick={handleSeedProductPicked}
+              onSkip={handleSeedProductSkip}
+            />
+          </div>
+        </div>
       )}
 
       {resizeConfirm && (
