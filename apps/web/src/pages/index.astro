@@ -2,6 +2,7 @@
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import AccountSetup from "../components/AccountSetup";
 import PrivacyNotice from "../components/PrivacyNotice";
+import WateringDueList from "../components/WateringDueList";
 import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。動的ルートの追加で astro.config が server モードになったため明示。
@@ -13,11 +14,15 @@ export const prerender = true;
   description="ポケットの中の農業。牧場物語のリアル MMO な家庭菜園 SNS。"
 >
   <main
-    class="min-h-screen flex flex-col items-center justify-center gap-4 text-neutral-900 p-8 pb-24"
+    class="min-h-screen flex flex-col items-center justify-start gap-4 text-neutral-900 p-8 pb-24"
   >
     <h1 class="text-3xl font-bold">🌱 Farm in Pocket (ポケ農)</h1>
-    <p class="text-lg">準備中です。設計・実装中（Phase 0）。</p>
     <p class="text-sm text-neutral-500">v{FARM_IN_POCKET_VERSION}</p>
+    {/* Issue #31: 「今日のおせわ」リスト。鍵保有時のみ自前で描画する（鍵未保有なら null）。 */}
+    <WateringDueList client:load />
+    <p class="text-sm text-neutral-600">
+      ポケットの中の農業。牧場物語のリアル MMO な家庭菜園 SNS。
+    </p>
   </main>
   <PrivacyNotice client:load />
   <AccountSetup client:load />

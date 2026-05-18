@@ -880,4 +880,166 @@ describe("CellDetail", () => {
     expect(oldOp).toBeLessThan(0.3);
     expect(oldOp).toBeGreaterThan(0);
   });
+
+  // -------------------------------------------------------------------------
+  // Issue #31: 水やりリマインダー
+  // -------------------------------------------------------------------------
+
+  it("Issue #31: 水やり間隔が未設定なら「設定する」 → PUT で 2日ごとに設定すると表示が更新される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "planted",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: null,
+          endTag: null,
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: null,
+          note: null,
+        },
+      },
+    });
+    // GET /api/plantings/7/watering : 未設定
+    routes.push({
+      match: (u, i) =>
+        /\/api\/plantings\/7\/watering(\?|$)/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { settings: null },
+    });
+    // PUT /api/plantings/7/watering : 2 で upsert
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\/watering$/.test(u) && i?.method === "PUT",
+      response: {
+        ok: true,
+        settings: {
+          plantingId: 7,
+          intervalDays: 2,
+          lastWateredAt: null,
+          nextDueAt: "2026-05-20",
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-watering-panel")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("fip-cell-detail-watering-interval-none")).toBeInTheDocument();
+    await user.click(screen.getByTestId("fip-cell-detail-watering-open-form"));
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-watering-form")).toBeInTheDocument();
+    });
+    const select = screen.getByTestId("fip-cell-detail-watering-preset") as HTMLSelectElement;
+    await user.selectOptions(select, "2");
+    await user.click(screen.getByTestId("fip-cell-detail-watering-submit"));
+    await waitFor(() => {
+      const put = fetchCalls.find(
+        (c) => c.method === "PUT" && /\/api\/plantings\/7\/watering$/.test(c.url),
+      );
+      expect(put).toBeDefined();
+      const body = JSON.parse(put?.body ?? "{}");
+      expect(body).toEqual({ pubkey: PUBKEY, intervalDays: 2 });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-watering-interval").textContent).toContain(
+        "2日ごと",
+      );
+    });
+  });
+
+  it("Issue #31: 設定済みで「💧 水やりした」を押すと POST /water が呼ばれて next_due_at が更新される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "planted",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: null,
+          endTag: null,
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: null,
+          note: null,
+        },
+      },
+    });
+    routes.push({
+      match: (u, i) =>
+        /\/api\/plantings\/7\/watering(\?|$)/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        settings: {
+          plantingId: 7,
+          intervalDays: 2,
+          lastWateredAt: "2026-05-10",
+          nextDueAt: "2026-05-12",
+        },
+      },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\/water$/.test(u) && i?.method === "POST",
+      response: {
+        ok: true,
+        wateredAt: "2026-05-18",
+        settings: {
+          plantingId: 7,
+          intervalDays: 2,
+          lastWateredAt: "2026-05-18",
+          nextDueAt: "2026-05-20",
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-watering-panel")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("fip-cell-detail-watering-interval").textContent).toContain(
+      "2日ごと",
+    );
+    await user.click(screen.getByTestId("fip-cell-detail-watering-done"));
+    await waitFor(() => {
+      const post = fetchCalls.find(
+        (c) => c.method === "POST" && /\/api\/plantings\/7\/water$/.test(c.url),
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}");
+      expect(body).toMatchObject({ pubkey: PUBKEY });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-watering-next").textContent).toContain(
+        "2026-05-20",
+      );
+    });
+  });
 });

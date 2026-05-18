@@ -171,7 +171,7 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
   - クライアントは初回 `POST /api/grids/:gridId/cells/:x/:y/plantings` を `confirmRotation: false` で送り、警告が返れば確認ダイアログを出し、ユーザーが OK したら `confirmRotation: true` で再送します（"分かった上で植える"）。
   - 旧クライアント（`confirmRotation` 未送信）は **既定で `true` 扱い**となり、警告は出さず作成だけ進めるため後方互換を壊しません。
 - **セル詳細・施肥/農薬の記録**（Issue #15）。セルをタップすると詳細モーダルが開き、容器/用土・現在の作物・直近 10 件ずつの履歴・過去の連作履歴（直近 10 件）を確認でき、「🍃 施肥」「🛡️ 農薬」ボタンで小フォームから種別・量・メモを記録できる（POST `/api/grids/:gridId/cells/:x/:y/{nutrient,pesticide}`）。
-  - 「💧 水やり」は plantings の watering_settings 統合になるため別 Issue で実装予定。
+  - **💧 水やり**（Issue #31）。作物（planting）が植わっているセルなら、クイック行の「💧 水やり」ボタンで `POST /api/plantings/:id/water` を打って実施記録を残せる。`watering_settings` があれば `last_watered_at = today` / `next_due_at = today + interval` も同時に更新される。
   - **施肥バッジ**: 施肥履歴があれば右下に緑の点（`●` + 日数）。経過日数に応じて自動でフェード（Issue #26）。
   - **農薬バッジ**: 農薬履歴があれば左下に赤の点。同じくフェード。
   - 編集アクション（容器を変える / 用土を変える / VOID / クリア / 作物を植える）は詳細モーダル下部の小さなボタン群から委譲される。
@@ -195,6 +195,18 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
   - **色の正本**: `packages/shared/src/farm.ts` の `NUTRIENT_COLORS`（nitrogen=緑 / phosphorus=赤 / potassium=紫 / calcium=黄 / magnesium=水色 / sulfur=橙 / iron=灰 / manganese=ライム / zinc=シアン / boron=薄灰 / organic=土色 / other=濃灰）。
   - **アクセシビリティ**: 各点に `aria-label="YYYY-MM-DD nutrient_type 量"` と SVG `<title>` を付与。
   - 関連 API: `GET /api/grids/:gridId/cells/:x/:y/nutrients?pubkey=<hex64>` がそのセルの全 `nutrient_records` を `applied_at` 昇順で返します（既存 `/records` は最新 10 件専用の Phase 1 仕様として残しています）。
+- **水やりリマインダー**（Issue #31）。作物（planting）ごとに水やり間隔を設定し、「今日水やりすべきか」を見える化します。
+  - **間隔ベース**（毎日リセットなし）。「やった」を記録すると `last_watered_at = today` / `next_due_at = today + interval_days` を再計算します。間隔は 1 日 / 2 日 / 3 日 / 週 1 / カスタム / 設定解除（リマインダーなし）の中から選びます。
+  - **デフォルトは「なし」**（リマインダー対象外）。新規 planting は `watering_settings` 行が無い状態で始まり、ユーザーが明示的に設定したときだけ「今日のおせわ」リストに乗ります。
+  - **「今日のおせわ」リスト**: トップページに「💧 今日のおせわ」セクションを置き、`next_due_at <= today AND interval_days IS NOT NULL` な plantings を一覧表示します。各行に grid 名 + (x, y) + 作物名 + 「💧 やった」ボタンが並び、ボタンを押すと `POST /api/plantings/:id/water` で記録 → 行が消えます。
+  - **期日超過表示**: `next_due_at < today` の行には赤バッジ「期日超過 N 日」が出ます（CellDetail の水やりパネルにも同じバッジ）。
+  - **CellDetail の水やりパネル**: セル詳細モーダルの「現在の作物」セクション直下に間隔設定 UI が並びます。現在の間隔 / 最後の水やり / 次回予定日 + 「変更する」「💧 水やりした」ボタン。終了 (`state="ended"`) 済みの植物には表示されません。
+  - **Web Push 通知はスコープ外**。Phase 3 以降で実装予定（Service Worker + Push API + サーバー側 cron）。現状はトップページに乗る「今日のおせわ」リストでのみ可視化します。
+  - 関連 API:
+    - `GET /api/plantings/:id/watering?pubkey=<hex64>` — 設定取得（無ければ `settings: null`）
+    - `PUT /api/plantings/:id/watering` — body `{ pubkey, intervalDays }`。`intervalDays=null|0` で DELETE（解除）
+    - `POST /api/plantings/:id/water` — body `{ pubkey, wateredAt?, note? }`。settings があれば `last_watered_at` / `next_due_at` を同時更新
+    - `GET /api/users/:pubkey/watering-due?pubkey=<hex64>&on=YYYY-MM-DD` — その日に期日を迎える plantings 一覧。`on` 省略時は今日 (UTC)。`state="ended"` は除外
 
 データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
 
@@ -221,6 +233,10 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `GET    /api/grids/:gridId/cells/:x/:y/history?pubkey=<hex64>` — 座標ベース連作履歴を直近 10 件、時系列降順で返す（Issue #22）
 - `POST   /api/grids/:gridId/cells/:x/:y/ph` — pH 測定値を記録（Issue #24, value: 0-14, measuredAt 省略時は今日）
 - `GET    /api/grids/:gridId/cells/:x/:y/ph?pubkey=<hex64>` — そのセルの pH 測定記録を measured_at 昇順で全件返す（Issue #24）
+- `GET    /api/plantings/:id/watering?pubkey=<hex64>` — 水やり間隔設定取得（無ければ `settings: null`）（Issue #31）
+- `PUT    /api/plantings/:id/watering` — body `{ pubkey, intervalDays }` で upsert / 解除（`intervalDays=null|0` で DELETE）（Issue #31）
+- `POST   /api/plantings/:id/water` — 水やり実施を記録、settings があれば `last_watered_at` / `next_due_at` を更新（Issue #31）
+- `GET    /api/users/:pubkey/watering-due?pubkey=<hex64>&on=YYYY-MM-DD` — その日に水やり期日を迎える plantings 一覧（Issue #31）
 
 ## 記録（作業ログの投稿）
 

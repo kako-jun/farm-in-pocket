@@ -10,12 +10,16 @@ import {
   fetchCellPh,
   fetchCellRecords,
   fetchPlanting,
+  fetchWateringDue,
+  fetchWateringSettings,
   listGrids,
   putCell,
   recordNutrient,
   recordPesticide,
   recordPh,
+  recordWatering,
   searchPlants,
+  setWateringInterval,
   updateGrid,
   updatePlanting,
 } from "./grid-api";
@@ -509,5 +513,99 @@ describe("grid-api", () => {
     expect(r.records).toHaveLength(1);
     expect(r.records[0]?.plantFamily).toBe("ナス科");
     expect(r.records[0]?.season).toBe("spring");
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #31: 水やりリマインダー
+  // -------------------------------------------------------------------------
+
+  it("fetchWateringSettings は GET /api/plantings/:id/watering?pubkey= を叩く", async () => {
+    mockFetch({
+      settings: {
+        plantingId: 7,
+        intervalDays: 2,
+        lastWateredAt: "2026-05-16",
+        nextDueAt: "2026-05-18",
+      },
+    });
+    const s = await fetchWateringSettings(7, "pk");
+    expect(first().url).toBe("/api/plantings/7/watering?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(s?.intervalDays).toBe(2);
+    expect(s?.nextDueAt).toBe("2026-05-18");
+  });
+
+  it("setWateringInterval は PUT /api/plantings/:id/watering に intervalDays を投げる", async () => {
+    mockFetch({
+      settings: {
+        plantingId: 7,
+        intervalDays: 3,
+        lastWateredAt: null,
+        nextDueAt: "2026-05-21",
+      },
+    });
+    const s = await setWateringInterval(7, 3, "pk");
+    expect(first().url).toBe("/api/plantings/7/watering");
+    expect(first().init?.method).toBe("PUT");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "pk", intervalDays: 3 });
+    expect(s?.intervalDays).toBe(3);
+  });
+
+  it("setWateringInterval(null) は intervalDays: null で送り settings=null を返す", async () => {
+    mockFetch({ settings: null });
+    const s = await setWateringInterval(7, null, "pk");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "pk", intervalDays: null });
+    expect(s).toBeNull();
+  });
+
+  it("recordWatering は POST /api/plantings/:id/water に pubkey と任意 wateredAt/note を投げる", async () => {
+    mockFetch({
+      ok: true,
+      wateredAt: "2026-05-18",
+      settings: {
+        plantingId: 7,
+        intervalDays: 2,
+        lastWateredAt: "2026-05-18",
+        nextDueAt: "2026-05-20",
+      },
+    });
+    const r = await recordWatering(7, "pk", "2026-05-18", "朝");
+    expect(first().url).toBe("/api/plantings/7/water");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "pk", wateredAt: "2026-05-18", note: "朝" });
+    expect(r.wateredAt).toBe("2026-05-18");
+    expect(r.settings?.nextDueAt).toBe("2026-05-20");
+  });
+
+  it("fetchWateringDue は GET /api/users/:pubkey/watering-due?pubkey=&on= を叩く", async () => {
+    mockFetch({
+      records: [
+        {
+          plantingId: 7,
+          cellId: 11,
+          gridId: "g1",
+          gridName: "南プランター",
+          x: 1,
+          y: 2,
+          plantId: 1,
+          plantName: "トマト",
+          intervalDays: 2,
+          lastWateredAt: "2026-05-16",
+          nextDueAt: "2026-05-18",
+          daysOverdue: 0,
+        },
+      ],
+    });
+    const records = await fetchWateringDue("pk", "2026-05-18");
+    // URLSearchParams のキー順は実装に依存しないので、両キーが含まれることを検証する
+    const calledUrl = first().url;
+    expect(calledUrl.startsWith("/api/users/pk/watering-due?")).toBe(true);
+    expect(calledUrl).toContain("pubkey=pk");
+    expect(calledUrl).toContain("on=2026-05-18");
+    expect(records).toHaveLength(1);
+    expect(records[0]?.plantName).toBe("トマト");
   });
 });

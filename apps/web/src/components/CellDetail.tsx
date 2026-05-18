@@ -20,6 +20,7 @@ import type {
   PlantingState,
   Season,
   SoilType,
+  WateringSettings,
 } from "@farm-in-pocket/shared";
 import {
   PLANTING_END_TAGS,
@@ -35,9 +36,12 @@ import {
   fetchCellPh,
   fetchCellRecords,
   fetchPlanting,
+  fetchWateringSettings,
   recordNutrient,
   recordPesticide,
   recordPh,
+  recordWatering,
+  setWateringInterval,
   updatePlanting,
 } from "../lib/grid-api";
 import NutrientTimelineChart from "./charts/NutrientTimelineChart";
@@ -152,6 +156,11 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const [plantingLoading, setPlantingLoading] = useState(true);
   // 「終了する」モーダル表示フラグ
   const [endingFormOpen, setEndingFormOpen] = useState(false);
+  // Issue #31: 水やり間隔設定 (planting に紐付く watering_settings)
+  // 設定行が無ければ null（リマインダー対象外）。
+  const [wateringSettings, setWateringSettings] = useState<WateringSettings | null>(null);
+  const [wateringLoading, setWateringLoading] = useState(true);
+  const [wateringFormOpen, setWateringFormOpen] = useState(false);
   // Issue #24: pH 測定記録 (measured_at 昇順)
   const [phRecords, setPhRecords] = useState<PhRecord[]>([]);
   const [phLoading, setPhLoading] = useState(true);
@@ -227,6 +236,26 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     }
   }, [cell?.currentPlantingId, pubkey]);
 
+  // Issue #31: 水やり間隔設定を取得。planting が無ければ null で済ます。
+  const reloadWatering = useCallback(async () => {
+    const pid = cell?.currentPlantingId ?? null;
+    if (pid == null) {
+      setWateringSettings(null);
+      setWateringLoading(false);
+      return;
+    }
+    setWateringLoading(true);
+    try {
+      const s = await fetchWateringSettings(pid, pubkey);
+      setWateringSettings(s);
+    } catch (e) {
+      console.warn("fetchWateringSettings failed", e);
+      setWateringSettings(null);
+    } finally {
+      setWateringLoading(false);
+    }
+  }, [cell?.currentPlantingId, pubkey]);
+
   // Issue #25: 養分投入の全件を時系列昇順で取得 (タイムライン用)
   const reloadAllNutrients = useCallback(async () => {
     setAllNutrientsLoading(true);
@@ -248,7 +277,15 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     void reloadPh();
     void reloadAllNutrients();
     void reloadPlanting();
-  }, [reloadRecords, reloadCropHistory, reloadPh, reloadAllNutrients, reloadPlanting]);
+    void reloadWatering();
+  }, [
+    reloadRecords,
+    reloadCropHistory,
+    reloadPh,
+    reloadAllNutrients,
+    reloadPlanting,
+    reloadWatering,
+  ]);
 
   // Issue #29: state 遷移ハンドラ
   const handleSetGrowing = async (): Promise<void> => {
@@ -291,6 +328,35 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
       await onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "state update failed");
+    }
+  };
+
+  // Issue #31: 水やり間隔を設定する / 解除する
+  const handleSetWateringInterval = async (intervalDays: number | null): Promise<void> => {
+    const pid = cell?.currentPlantingId ?? null;
+    if (pid == null) return;
+    try {
+      const updated = await setWateringInterval(pid, intervalDays, pubkey);
+      setWateringSettings(updated);
+      setWateringFormOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "watering setting update failed");
+    }
+  };
+
+  // Issue #31: 水やりを実施した
+  const handleRecordWatering = async (): Promise<void> => {
+    const pid = cell?.currentPlantingId ?? null;
+    if (pid == null) return;
+    try {
+      const res = await recordWatering(pid, pubkey);
+      // settings があれば API 側で last_watered_at / next_due_at が更新済み。
+      // settings が無いケース（リマインダー未設定）は wateringSettings は null のまま。
+      if (res.settings) {
+        setWateringSettings(res.settings);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "watering record failed");
     }
   };
 
@@ -400,16 +466,32 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
             {plantingLoading ? (
               <p className="text-xs text-neutral-500">読み込み中…</p>
             ) : planting ? (
-              <PlantingPanel
-                planting={planting}
-                plantName={plantName}
-                endingFormOpen={endingFormOpen}
-                onSetGrowing={() => void handleSetGrowing()}
-                onSetPlanted={() => void handleSetPlanted()}
-                onOpenEnding={() => setEndingFormOpen(true)}
-                onCancelEnding={() => setEndingFormOpen(false)}
-                onSubmitEnding={handleEndPlanting}
-              />
+              <>
+                <PlantingPanel
+                  planting={planting}
+                  plantName={plantName}
+                  endingFormOpen={endingFormOpen}
+                  onSetGrowing={() => void handleSetGrowing()}
+                  onSetPlanted={() => void handleSetPlanted()}
+                  onOpenEnding={() => setEndingFormOpen(true)}
+                  onCancelEnding={() => setEndingFormOpen(false)}
+                  onSubmitEnding={handleEndPlanting}
+                />
+                {/* Issue #31: 水やり間隔設定 */}
+                {planting.state !== "ended" &&
+                  (wateringLoading ? (
+                    <p className="text-xs text-neutral-500">水やり設定を読み込み中…</p>
+                  ) : (
+                    <WateringPanel
+                      settings={wateringSettings}
+                      formOpen={wateringFormOpen}
+                      onOpenForm={() => setWateringFormOpen(true)}
+                      onCancelForm={() => setWateringFormOpen(false)}
+                      onSubmitInterval={handleSetWateringInterval}
+                      onRecordWatering={() => void handleRecordWatering()}
+                    />
+                  ))}
+              </>
             ) : (
               <p className="text-xs text-neutral-500">作物情報の取得に失敗しました</p>
             )}
@@ -423,14 +505,13 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
             <button
               type="button"
               data-testid="fip-cell-detail-quick-water"
-              // TODO(#後続 Issue): plantings の watering_settings に統合して水やり実施を記録する。
-              // 現状はバッジ表示しか担当しない。
-              onClick={() => {
-                setError("水やりは作物（planting）に紐付くため、別 Issue で実装予定です。");
-              }}
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-700 hover:bg-sky-100"
+              // Issue #31: 作物 (planting) が植わっていれば水やり実施 → POST /water。
+              // 植わっていなければ何もしない（disabled）。設定は下の WateringPanel から。
+              onClick={() => void handleRecordWatering()}
+              disabled={cell?.currentPlantingId == null}
+              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-3 text-sm text-sky-700 hover:bg-sky-100 disabled:opacity-50"
               style={{ minHeight: 44 }}
-              aria-label="水やり (準備中)"
+              aria-label="水やり"
             >
               💧 水やり
             </button>
@@ -1216,6 +1297,213 @@ function PlantingPanel(props: {
 
       {/* 終了モーダル（インラインフォーム） */}
       {endingFormOpen && <PlantingEndForm onCancel={onCancelEnding} onSubmit={onSubmitEnding} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 水やり間隔パネル (Issue #31)
+//   * settings == null  → 「水やりリマインダー: なし」+ 「設定する」ボタン
+//   * settings != null  → 間隔 / 最後の水やり / 次回予定日 + 「変更する」「やった」ボタン
+//   * 期日超過なら赤バッジで「期日超過 N 日」
+//   * 設定モーダルは select で 1/2/3/週1/カスタム/設定解除
+// ---------------------------------------------------------------------------
+
+const INTERVAL_PRESETS: { value: number | "custom" | "off"; label: string }[] = [
+  { value: 1, label: "1日ごと" },
+  { value: 2, label: "2日ごと" },
+  { value: 3, label: "3日ごと" },
+  { value: 7, label: "週1（7日ごと）" },
+  { value: "custom", label: "カスタム…" },
+  { value: "off", label: "設定解除（リマインダーなし）" },
+];
+
+function todayYmdLocal(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysOverdue(nextDueAt: string | null): number {
+  if (!nextDueAt) return 0;
+  const today = todayYmdLocal();
+  const due = new Date(`${nextDueAt.slice(0, 10)}T00:00:00Z`).getTime();
+  const now = new Date(`${today}T00:00:00Z`).getTime();
+  if (Number.isNaN(due) || Number.isNaN(now)) return 0;
+  return Math.floor((now - due) / (24 * 60 * 60 * 1000));
+}
+
+function WateringPanel(props: {
+  settings: WateringSettings | null;
+  formOpen: boolean;
+  onOpenForm: () => void;
+  onCancelForm: () => void;
+  onSubmitInterval: (intervalDays: number | null) => void | Promise<void>;
+  onRecordWatering: () => void;
+}): JSX.Element {
+  const { settings, formOpen, onOpenForm, onCancelForm, onSubmitInterval, onRecordWatering } =
+    props;
+  const overdue = settings ? daysOverdue(settings.nextDueAt) : 0;
+
+  return (
+    <div
+      data-testid="fip-cell-detail-watering-panel"
+      className="space-y-2 rounded border border-sky-200 bg-white p-2"
+    >
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-neutral-700">💧 水やり間隔</span>
+        {settings ? (
+          <span
+            data-testid="fip-cell-detail-watering-interval"
+            className="font-semibold text-sky-800"
+          >
+            {settings.intervalDays}日ごと
+          </span>
+        ) : (
+          <span data-testid="fip-cell-detail-watering-interval-none" className="text-neutral-500">
+            なし
+          </span>
+        )}
+      </div>
+
+      {settings && (
+        <ul className="space-y-0.5 text-xs text-neutral-700">
+          <li data-testid="fip-cell-detail-watering-last">
+            最後の水やり: {settings.lastWateredAt ?? "未記録"}
+          </li>
+          <li data-testid="fip-cell-detail-watering-next">
+            次回予定: {settings.nextDueAt ?? "—"}
+            {overdue > 0 && (
+              <span
+                data-testid="fip-cell-detail-watering-overdue"
+                className="ml-2 inline-block rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800"
+              >
+                期日超過 {overdue}日
+              </span>
+            )}
+          </li>
+        </ul>
+      )}
+
+      {!formOpen && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="fip-cell-detail-watering-open-form"
+            onClick={onOpenForm}
+            className="rounded-lg border border-sky-400 bg-sky-50 px-3 py-2 text-xs text-sky-800 hover:bg-sky-100"
+            style={{ minHeight: 36 }}
+          >
+            {settings ? "変更する" : "設定する"}
+          </button>
+          {settings && (
+            <button
+              type="button"
+              data-testid="fip-cell-detail-watering-done"
+              onClick={onRecordWatering}
+              className="rounded-lg border border-sky-500 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-200"
+              style={{ minHeight: 36 }}
+            >
+              💧 水やりした
+            </button>
+          )}
+        </div>
+      )}
+
+      {formOpen && <WateringIntervalForm onCancel={onCancelForm} onSubmit={onSubmitInterval} />}
+    </div>
+  );
+}
+
+function WateringIntervalForm(props: {
+  onCancel: () => void;
+  onSubmit: (intervalDays: number | null) => void | Promise<void>;
+}): JSX.Element {
+  const [preset, setPreset] = useState<string>("1");
+  const [customDays, setCustomDays] = useState<string>("5");
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const handleSubmit = (): void => {
+    if (preset === "off") {
+      setLocalError(null);
+      void props.onSubmit(null);
+      return;
+    }
+    if (preset === "custom") {
+      const n = Math.floor(Number(customDays));
+      if (!Number.isFinite(n) || n <= 0) {
+        setLocalError("カスタムは 1 以上の整数で入力してください");
+        return;
+      }
+      setLocalError(null);
+      void props.onSubmit(n);
+      return;
+    }
+    const n = Math.floor(Number(preset));
+    if (!Number.isFinite(n) || n <= 0) {
+      setLocalError("不正な値です");
+      return;
+    }
+    setLocalError(null);
+    void props.onSubmit(n);
+  };
+
+  return (
+    <div
+      data-testid="fip-cell-detail-watering-form"
+      className="space-y-2 rounded border border-sky-200 bg-sky-50/40 p-2"
+    >
+      <label className="block text-xs">
+        間隔
+        <select
+          data-testid="fip-cell-detail-watering-preset"
+          value={preset}
+          onChange={(e) => setPreset(e.target.value)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        >
+          {INTERVAL_PRESETS.map((opt) => (
+            <option key={String(opt.value)} value={String(opt.value)}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {preset === "custom" && (
+        <label className="block text-xs">
+          カスタム日数
+          <input
+            type="number"
+            min="1"
+            step="1"
+            data-testid="fip-cell-detail-watering-custom-days"
+            value={customDays}
+            onChange={(e) => setCustomDays(e.target.value)}
+            className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+          />
+        </label>
+      )}
+      {localError && (
+        <p className="text-xs text-red-600" data-testid="fip-cell-detail-watering-error">
+          {localError}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="fip-cell-detail-watering-submit"
+          onClick={handleSubmit}
+          className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-semibold text-white"
+          style={{ minHeight: 36 }}
+        >
+          保存する
+        </button>
+        <button
+          type="button"
+          onClick={props.onCancel}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-xs"
+          style={{ minHeight: 36 }}
+        >
+          キャンセル
+        </button>
+      </div>
     </div>
   );
 }

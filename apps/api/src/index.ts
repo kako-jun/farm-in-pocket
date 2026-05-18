@@ -5,6 +5,7 @@ import gridsRouter from "./routes/grids";
 import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
 import retrospectiveRouter from "./routes/retrospective";
+import { wateringPlantingsRouter, wateringUsersRouter } from "./routes/watering";
 
 type Bindings = {
   DB: D1Database;
@@ -33,7 +34,14 @@ app.route("/api/grids", plantingsCreateRouter); // POST /api/grids/:gridId/cells
 app.route("/api/grids", cellActionsRouter); // POST/GET /api/grids/:gridId/cells/:x/:y/{nutrient,pesticide,records}
 app.route("/api/plants", plantsRouter);
 app.route("/api/plantings", plantingsItemRouter);
+// Issue #31: 水やりリマインダー
+//   /api/plantings/:plantingId/watering (GET/PUT)
+//   /api/plantings/:plantingId/water    (POST)
+app.route("/api/plantings", wateringPlantingsRouter);
 // Issue #30: 振り返りビュー (カレンダー / 作物別 / グリッド履歴 / 失敗ログ)
 app.route("/api/users", retrospectiveRouter);
+// Issue #31: 「今日水やりすべき」一覧
+//   /api/users/:pubkey/watering-due
+app.route("/api/users", wateringUsersRouter);
 
 export default app;

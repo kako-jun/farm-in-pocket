@@ -254,6 +254,36 @@ export interface FailurePlantingRecord extends PlantingRecord {
   plantFamily: string;
 }
 
+// ============================================================================
+// 水やりリマインダー DTO (Issue #31)
+//   * デフォルトは「なし」（リマインダー対象外）。settings 行が存在しなければ未設定。
+//   * 「やった」を記録すると last_watered_at = today、next_due_at = today + interval_days。
+//   * 「今日水やりすべき」リスト = next_due_at <= today AND interval_days IS NOT NULL。
+// ============================================================================
+
+export interface WateringSettings {
+  plantingId: number;
+  intervalDays: number;
+  lastWateredAt: string | null;
+  nextDueAt: string | null;
+}
+
+export interface WateringDueRecord {
+  plantingId: number;
+  cellId: number;
+  gridId: string;
+  gridName: string;
+  x: number;
+  y: number;
+  plantId: number;
+  plantName: string;
+  intervalDays: number;
+  lastWateredAt: string | null;
+  nextDueAt: string;
+  /** 0 = today, positive = overdue (今日より過去の next_due_at) */
+  daysOverdue: number;
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;
