@@ -67,7 +67,7 @@ const TABS: readonly Tab[] = [
 // "/" 完全一致は「マイ畑」が拾い、`/grid` は startsWith で「畑編集」が拾うので衝突しない。
 function isActive(tab: Tab): boolean {
   if (tab.exact) return pathname === tab.match;
-  return pathname === tab.match || pathname.startsWith(`${tab.match}/`) || pathname === tab.match;
+  return pathname === tab.match || pathname.startsWith(`${tab.match}/`);
 }
 
 // Issue 仕様は 4 タブだが、既存の `/` と `/grid` を両方残したいので 5 タブで実装している。
