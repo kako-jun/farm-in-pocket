@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DRAFTS_STORAGE_KEY } from "../lib/drafts";
 import { SECRET_KEY_STORAGE_KEY } from "../lib/keys";
+import { OFFLINE_QUEUE_STORAGE_KEY } from "../lib/offline-queue";
 import RecordForm from "./RecordForm";
 
 interface MockRoute {
@@ -394,5 +395,42 @@ describe("RecordForm", () => {
       // farm-events.ts は image URL を ["image", url] タグで書く
       expect(body.event.tags).toContainEqual(["image", imgUrl]);
     });
+  });
+
+  it("圏外 (navigator.onLine=false) で投稿するとオフラインキューに積まれ、保留メッセージが出る (Issue #42)", async () => {
+    seedKey();
+    routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });
+    // /api/publish はあえて未登録 (route fallback で 500) だが、offline 判定が先に走ってキューに積まれる想定
+    const original = Object.getOwnPropertyDescriptor(window.navigator, "onLine");
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => false });
+    try {
+      const user = userEvent.setup();
+      render(<RecordForm />);
+      await waitFor(() => {
+        expect(screen.getByTestId("fip-record-form")).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByTestId("fip-record-form-content"), "圏外テスト");
+      await user.click(screen.getByTestId("fip-record-form-submit"));
+
+      await waitFor(() => {
+        const st = screen.getByTestId("fip-record-form-status");
+        expect(st.getAttribute("data-status")).toBe("success");
+        expect(st.textContent).toMatch(/保留/);
+      });
+
+      const raw = localStorage.getItem(OFFLINE_QUEUE_STORAGE_KEY);
+      const queue = JSON.parse(raw ?? "[]") as { kind: string; event: { content: string } }[];
+      expect(queue).toHaveLength(1);
+      expect(queue[0]?.kind).toBe("publishEvent");
+      expect(queue[0]?.event.content).toBe("圏外テスト");
+
+      // /api/publish には実 fetch は飛ばしていない
+      expect(fetchCalls.find((c) => /\/api\/publish$/.test(c.url))).toBeUndefined();
+    } finally {
+      if (original) {
+        Object.defineProperty(window.navigator, "onLine", original);
+      }
+    }
   });
 });

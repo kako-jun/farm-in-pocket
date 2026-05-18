@@ -15,6 +15,7 @@
 
 import BottomNav from "../components/BottomNav.astro";
 import KeifunMascot from "../components/keifun/KeifunMascot";
+import OfflineFlusherBoot from "../components/OfflineFlusherBoot";
 import SeasonBootstrap from "../components/SeasonBootstrap";
 import "../styles/global.css";
 
@@ -39,6 +40,11 @@ const { title, description } = Astro.props;
     {/* Issue #41: 季節UI。body の CSS 変数を実行時に上書きする副作用専用コンポーネント。
         client:load で確実に hydration 後すぐ動かす（描画 DOM 無し）。 */}
     <SeasonBootstrap client:load />
+    {/* Issue #42: PWA オフライン対応。
+        navigator.onLine の online イベント + 60s 定期で
+        fip:offline-actions-v1 キューを順次 flush する副作用専用コンポーネント。
+        描画 DOM は無し。 */}
+    <OfflineFlusherBoot client:idle />
     <slot />
     {/* Issue #21: けいふんくんマスコット。Phase 1 は idle 文言の雛形のみ。
         ボトムナビ (z-40) より下の z-30 で右下に置く。

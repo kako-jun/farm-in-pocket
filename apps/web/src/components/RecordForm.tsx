@@ -28,7 +28,13 @@ import { addDraft, loadDrafts, newDraftId, removeDraft } from "../lib/drafts";
 import { listGrids } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
 import { createMypaceClient } from "../lib/mypace";
+import { pushAction } from "../lib/offline-queue";
 import PhotoPicker from "./PhotoPicker";
+
+function isCurrentlyOnline(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine !== false;
+}
 
 type Status =
   | { kind: "idle" }
@@ -204,19 +210,36 @@ export default function RecordForm(): JSX.Element {
     const now = Math.floor(Date.now() / 1000);
     const draftForFallback = buildDraftFromForm(now);
 
-    try {
-      const draftEvent = buildWorkRecordEvent({
-        action: form.action,
-        content: form.content,
-        gridId: form.gridId,
-        cellX: form.cellX,
-        cellY: form.cellY,
-        cropName: draftForFallback.cropName,
-        imageUrls: form.imageUrls,
-        milestone: form.milestone,
-        createdAt: now,
+    // 署名は offline でも実行できるので先に作っておく（圏外時のキュー投入で使う）。
+    const draftEvent = buildWorkRecordEvent({
+      action: form.action,
+      content: form.content,
+      gridId: form.gridId,
+      cellX: form.cellX,
+      cellY: form.cellY,
+      cropName: draftForFallback.cropName,
+      imageUrls: form.imageUrls,
+      milestone: form.milestone,
+      createdAt: now,
+    });
+    const signed = signEvent(draftEvent, kp.secretKey);
+
+    // Issue #42: 圏外時はそのままオフラインキューへ。UI 上は「投稿予約」扱いで成功表示。
+    if (!isCurrentlyOnline()) {
+      pushAction({ kind: "publishEvent", event: signed, queuedAt: Date.now() });
+      // 編集中 draft があれば閉じる（提出済み扱い）
+      const next = removeDraft(form.draftId);
+      setDrafts(next);
+      setStatus({
+        kind: "success",
+        message: "保留しました（オンライン復帰時に送信します）。",
       });
-      const signed = signEvent(draftEvent, kp.secretKey);
+      resetForm();
+      setSubmitting(false);
+      return;
+    }
+
+    try {
       // publish は NIP-98 不要なので signer 不要。secretKey は渡さない。
       const client = createMypaceClient();
       await client.publishEvent(signed);
@@ -227,7 +250,9 @@ export default function RecordForm(): JSX.Element {
       setStatus({ kind: "success", message: "投稿しました。" });
       resetForm();
     } catch (err) {
-      // ネットワーク失敗 or API エラーは下書きに退避
+      // Issue #42: ネットワーク失敗時はオフラインキューに退避し、UI は保留扱いに。
+      //   さらに編集再開できるよう draft にも残す（編集中の draft = 復元可能、queue = 自動再送）。
+      pushAction({ kind: "publishEvent", event: signed, queuedAt: Date.now() });
       const next = addDraft(draftForFallback);
       setDrafts(next);
       const detail = err instanceof Error ? err.message : "投稿に失敗しました";

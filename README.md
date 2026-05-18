@@ -375,6 +375,41 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 ### ローカルストレージキー
 
 - `fip:work-record-drafts-v1` — 下書きキュー（最大 100 件、古いものから trim）。
+- `fip:offline-actions-v1` — オフラインアクションキュー（最大 100 件、Issue #42 / 「PWA オフライン対応」参照）。
+- `fip:cache:grids:<pubkey>` — 自分のグリッド一覧の最終取得スナップショット（圏外時の fallback 用）。
+- `fip:cache:plants` — 植物マスタの最終取得結果。
+
+## PWA オフライン対応
+
+畑は電波が悪いので、ポケ農は「圏外でも作業を止めない」ことを目標に PWA + アプリケーションレイヤのキューで設計しています（Issue #42）。
+
+### キュー: `fip:offline-actions-v1`
+
+圏外時や fetch 失敗時に、以下の **OfflineAction** を localStorage キュー（最大 100 件）に積みます。
+
+- `publishEvent` — 署名済み Nostr event を mypace `/api/publish` に POST する予定のアクション。作業記録投稿で使う。
+- `recordWatering` — 水やり実施を D1 `/api/plantings/:id/water` に POST する予定のアクション。「💧 やった」ボタンで使う。
+
+ユーザー UI 上は「保留しました（オンライン復帰時に送信します）」として完了したように見せます（楽観 update）。
+
+### キャッシュ: `fip:cache:grids:<pubkey>` / `fip:cache:plants`
+
+API レスポンスを最後の状態として localStorage に保持し、オフライン時に fallback で読みます。
+
+- `fip:cache:grids:<pubkey>` — グリッド一覧（cells / summary 込み）。`GridEditor` が `listGrids()` 成功時に書き込み、失敗時に読み出す。
+- `fip:cache:plants` — 植物マスタ一覧。`PlantsList` が `searchPlantsAdvanced()` 成功時に書き込み、失敗時に読み出す。
+
+PWA precache（`@vite-pwa/astro`）はアプリ shell（HTML/JS/CSS、約 51 entries）を担当し、上記キャッシュは「ユーザーデータの最後の状態」を担当します。
+
+### 復帰トリガー
+
+`OfflineFlusherBoot` が `MainLayout` に `client:idle` でマウントされ、以下のタイミングでキューを順次 fire します。
+
+- `window` の `online` イベント（OS / ブラウザがオンライン復帰を検知した瞬間）
+- 60 秒ごとの `setInterval`（ネットワーク状態が変化しなくても定期的に試行）
+- 起動時 1 回（リロード直後にキューが残っていれば即送信）
+
+1 件失敗したら以降の flush を打ち切り、次回トリガーで先頭から再試行します。すべての fire 成功でキューは空になります。
 
 ### 振り返り 4 ビュー（Issue #30）
 
