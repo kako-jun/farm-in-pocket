@@ -138,12 +138,13 @@ describe("OtherFarmPage", () => {
     fetchMock.mockResolvedValue(makeData());
     getMyKeyPairMock.mockReturnValue(null);
     render(<OtherFarmPage npub="npub1aaaa" />);
+    // data-state が loading から no-key へ遷移するまで待つ（follow effect 完了後）
     await waitFor(() => {
-      expect(screen.getByTestId("other-follow-btn")).toBeInTheDocument();
+      const el = screen.getByTestId("other-follow-btn");
+      expect(el.getAttribute("data-state")).toBe("no-key");
     });
     const btn = screen.getByTestId("other-follow-btn") as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
-    expect(btn.getAttribute("data-state")).toBe("no-key");
   });
 
   it("鍵保存時は follow toggle で followPubkey / unfollowPubkey を呼ぶ", async () => {
