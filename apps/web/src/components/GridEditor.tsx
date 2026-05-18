@@ -12,6 +12,7 @@ import {
   createGrid,
   createPlanting,
   deleteCell,
+  deleteGrid,
   deletePlanting,
   listGrids,
   putCell,
@@ -91,6 +92,11 @@ const SOIL_LABELS: Record<SoilType, string> = {
   other: "その他",
 };
 
+// アクティブグリッド永続化キー（README に明記）
+const ACTIVE_GRID_KEY = "fip:active-grid-id-v1";
+// グリッド名の最大長（UI で 32 文字に丸める。サーバー側は 100 まで許容するが UX 上短く）
+const GRID_NAME_MAX = 32;
+
 function containerOptionsFor(env: GridEnvironment): ContainerType[] {
   if (env === "indoor") return INDOOR_CONTAINERS;
   return OUTDOOR_CONTAINERS;
@@ -113,18 +119,32 @@ interface OpenCell {
 export default function GridEditor(): JSX.Element {
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [pubkeyChecked, setPubkeyChecked] = useState(false);
-  const [grid, setGrid] = useState<GridRecord | null>(null);
+  const [grids, setGrids] = useState<GridRecord[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  // 初回 reload 完了までは「localStorage への書き戻し」を抑止する。
+  // mount 直後の activeId=null が書き戻し effect で発火すると、
+  // 既に保存された active grid id を消してしまうため。
+  const hydratedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
-  // 新規作成フォーム
+  // 新規作成モーダル
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState("マイ畑");
   const [createEnv, setCreateEnv] = useState<GridEnvironment>("outdoor_sunny");
   const [createLight, setCreateLight] = useState<GridLighting | "">("");
   const [createX, setCreateX] = useState(5);
   const [createY, setCreateY] = useState(5);
+
+  // 並び替え・削除モード（タブバーの「・・・」から）
+  const [manageMode, setManageMode] = useState(false);
+  // 削除確認ダイアログ
+  const [deleteConfirm, setDeleteConfirm] = useState<GridRecord | null>(null);
+
+  // タブ上での名前インライン編集
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
 
   // セルモーダル
   const [openCell, setOpenCell] = useState<OpenCell | null>(null);
@@ -133,18 +153,36 @@ export default function GridEditor(): JSX.Element {
   // サイズ変更確認
   const [resizeConfirm, setResizeConfirm] = useState<{ sizeX: number; sizeY: number } | null>(null);
 
+  // タブ DOM 参照: activeId が変わったときに横スクロールで中央寄せ
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
   useEffect(() => {
     const kp = getMyKeyPair();
     setPubkey(kp?.pubkey ?? null);
     setPubkeyChecked(true);
   }, []);
 
+  // アクティブタブが画面外にあれば視野に入れる
+  // happy-dom など jsdom 互換で scrollIntoView が未定義のケースに備えてオプショナル呼び出し
+  useEffect(() => {
+    if (activeId == null) return;
+    const el = tabRefs.current[activeId];
+    el?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [activeId]);
+
   const reload = useCallback(async (pk: string) => {
     setLoading(true);
     setError(null);
     try {
-      const grids = await listGrids(pk);
-      setGrid(grids[0] ?? null);
+      const list = await listGrids(pk);
+      setGrids(list);
+      // アクティブグリッド復元: localStorage の ID が現存しなければ先頭にフォールバック
+      const stored =
+        typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_GRID_KEY) : null;
+      const found = stored != null ? list.find((g) => g.id === stored) : undefined;
+      const next = found ?? list[0] ?? null;
+      setActiveId(next?.id ?? null);
+      hydratedRef.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "load failed");
     } finally {
@@ -160,25 +198,128 @@ export default function GridEditor(): JSX.Element {
     void reload(pubkey);
   }, [pubkey, reload]);
 
+  // アクティブ ID を localStorage に書き戻し（初回 reload が終わってからのみ）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hydratedRef.current) return;
+    if (activeId == null) {
+      window.localStorage.removeItem(ACTIVE_GRID_KEY);
+    } else {
+      window.localStorage.setItem(ACTIVE_GRID_KEY, activeId);
+    }
+  }, [activeId]);
+
+  const grid = useMemo(() => grids.find((g) => g.id === activeId) ?? null, [grids, activeId]);
   const cellMap = useMemo(() => (grid ? buildCellMap(grid.cells) : new Map()), [grid]);
+
+  // grids state を id で更新する小道具
+  const replaceGrid = useCallback((updated: GridRecord) => {
+    setGrids((gs) => gs.map((g) => (g.id === updated.id ? updated : g)));
+  }, []);
 
   // ---- handlers --------------------------------------------------------
 
   const handleCreate = async (): Promise<void> => {
     if (pubkey === null) return;
     try {
+      const trimmed = createName.trim().slice(0, GRID_NAME_MAX);
       const g = await createGrid({
         pubkey,
-        name: createName.trim() || "マイ畑",
+        name: trimmed.length > 0 ? trimmed : "マイ畑",
         environment: createEnv,
         lighting: createEnv === "indoor" ? createLight || null : null,
         sizeX: createX,
         sizeY: createY,
       });
-      setGrid(g);
+      setGrids((gs) => [...gs, g]);
+      setActiveId(g.id);
       setShowCreate(false);
+      // 入力値はリセットして次回の追加に備える
+      setCreateName("マイ畑");
+      setCreateEnv("outdoor_sunny");
+      setCreateLight("");
+      setCreateX(5);
+      setCreateY(5);
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
+    }
+  };
+
+  const handleDelete = async (target: GridRecord): Promise<void> => {
+    if (pubkey === null) return;
+    try {
+      await deleteGrid(target.id, pubkey);
+      setGrids((gs) => {
+        const next = gs.filter((g) => g.id !== target.id);
+        // アクティブが消えたら次の grid にフォールバック
+        if (activeId === target.id) {
+          setActiveId(next[0]?.id ?? null);
+        }
+        return next;
+      });
+      setDeleteConfirm(null);
+      // 削除し切ったら manage mode 解除
+      if (grids.length <= 1) setManageMode(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "delete failed");
+    }
+  };
+
+  const handleMove = async (id: string, dir: -1 | 1): Promise<void> => {
+    if (pubkey === null) return;
+    const idx = grids.findIndex((g) => g.id === id);
+    if (idx < 0) return;
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= grids.length) return;
+    const a = grids[idx];
+    const b = grids[swapIdx];
+    if (!a || !b) return;
+    // sort_order を入れ替えて 2 件 PATCH。
+    // TODO(Phase 2): bulk PATCH endpoint を追加して 1 リクエストで済ませる
+    try {
+      const [ra, rb] = await Promise.all([
+        updateGrid(a.id, pubkey, { sortOrder: b.sortOrder }),
+        updateGrid(b.id, pubkey, { sortOrder: a.sortOrder }),
+      ]);
+      setGrids((gs) => {
+        const map = new Map(gs.map((g) => [g.id, g]));
+        map.set(ra.grid.id, ra.grid);
+        map.set(rb.grid.id, rb.grid);
+        return Array.from(map.values()).sort((x, y) => x.sortOrder - y.sortOrder);
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "reorder failed");
+      // 片方失敗時はサーバーから再取得して UI と整合させる
+      // (Promise.all で片方だけ成功すると sortOrder が部分適用された状態になり、
+      //  ローカルの楽観更新では復元できないため強制再同期する)
+      void reload(pubkey);
+    }
+  };
+
+  const handleStartRename = (g: GridRecord): void => {
+    setEditingNameId(g.id);
+    setEditingNameValue(g.name);
+  };
+
+  const handleCommitRename = async (): Promise<void> => {
+    if (pubkey === null || editingNameId === null) return;
+    const trimmed = editingNameValue.trim().slice(0, GRID_NAME_MAX);
+    if (trimmed.length === 0) {
+      setEditingNameId(null);
+      return;
+    }
+    const target = grids.find((g) => g.id === editingNameId);
+    if (!target || target.name === trimmed) {
+      setEditingNameId(null);
+      return;
+    }
+    try {
+      const r = await updateGrid(editingNameId, pubkey, { name: trimmed });
+      replaceGrid(r.grid);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "rename failed");
+    } finally {
+      setEditingNameId(null);
     }
   };
 
@@ -255,11 +396,13 @@ export default function GridEditor(): JSX.Element {
   };
 
   const replaceCell = (cell: CellRecord): void => {
-    setGrid((g) => {
-      if (!g) return g;
-      const others = g.cells.filter((c) => !(c.x === cell.x && c.y === cell.y));
-      return { ...g, cells: [...others, cell] };
-    });
+    setGrids((gs) =>
+      gs.map((g) => {
+        if (g.id !== cell.gridId) return g;
+        const others = g.cells.filter((c) => !(c.x === cell.x && c.y === cell.y));
+        return { ...g, cells: [...others, cell] };
+      }),
+    );
   };
 
   const handleEnvChange = async (env: GridEnvironment): Promise<void> => {
@@ -269,7 +412,7 @@ export default function GridEditor(): JSX.Element {
         environment: env,
         lighting: env === "indoor" ? grid.lighting : null,
       });
-      setGrid(r.grid);
+      replaceGrid(r.grid);
     } catch (e) {
       setError(e instanceof Error ? e.message : "update failed");
     }
@@ -279,7 +422,7 @@ export default function GridEditor(): JSX.Element {
     if (!grid || !pubkey) return;
     try {
       const r = await updateGrid(grid.id, pubkey, { lighting: light === "" ? null : light });
-      setGrid(r.grid);
+      replaceGrid(r.grid);
     } catch (e) {
       setError(e instanceof Error ? e.message : "update failed");
     }
@@ -298,7 +441,7 @@ export default function GridEditor(): JSX.Element {
         sizeX: resizeConfirm.sizeX,
         sizeY: resizeConfirm.sizeY,
       });
-      setGrid(r.grid);
+      replaceGrid(r.grid);
       if (r.cropHistoryResetWarning) {
         setWarning("グリッドサイズを変更しました。過去の連作履歴との対応はリセットされます。");
       }
@@ -333,119 +476,46 @@ export default function GridEditor(): JSX.Element {
     );
   }
 
-  if (grid === null) {
+  // グリッド 0 件: 作成 CTA + モーダルだけを出す（タブバーは不要）
+  if (grids.length === 0) {
     return (
       <div data-testid="fip-grid-empty" className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {!showCreate ? (
-          <button
-            type="button"
-            data-testid="fip-grid-create-open"
-            onClick={() => setShowCreate(true)}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            style={{ minHeight: 44 }}
-          >
-            グリッドを作成
-          </button>
-        ) : (
-          <div
-            data-testid="fip-grid-create-form"
-            className="space-y-3 rounded-lg border border-neutral-300 bg-white p-4"
-          >
-            <label className="block text-sm">
-              名前
-              <input
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
-                maxLength={100}
-              />
-            </label>
-            <label className="block text-sm">
-              環境
-              <select
-                value={createEnv}
-                onChange={(e) => setCreateEnv(e.target.value as GridEnvironment)}
-                className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
-              >
-                {(Object.keys(ENVIRONMENT_LABELS) as GridEnvironment[]).map((k) => (
-                  <option key={k} value={k}>
-                    {ENVIRONMENT_LABELS[k]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {createEnv === "indoor" && (
-              <label className="block text-sm">
-                照明
-                <select
-                  value={createLight}
-                  onChange={(e) => setCreateLight(e.target.value as GridLighting | "")}
-                  className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
-                >
-                  <option value="">未設定</option>
-                  {(Object.keys(LIGHTING_LABELS) as GridLighting[]).map((k) => (
-                    <option key={k} value={k}>
-                      {LIGHTING_LABELS[k]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <div className="flex gap-3">
-              <label className="block text-sm">
-                横
-                <input
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={createX}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (!Number.isFinite(n)) return; // NaN なら前回値を維持
-                    setCreateX(Math.max(1, Math.min(9, n)));
-                  }}
-                  className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
-                />
-              </label>
-              <label className="block text-sm">
-                縦
-                <input
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={createY}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (!Number.isFinite(n)) return;
-                    setCreateY(Math.max(1, Math.min(9, n)));
-                  }}
-                  className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
-                />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                data-testid="fip-grid-create-submit"
-                onClick={handleCreate}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                style={{ minHeight: 44 }}
-              >
-                作成
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
-                style={{ minHeight: 44 }}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
+        <button
+          type="button"
+          data-testid="fip-grid-create-open"
+          onClick={() => setShowCreate(true)}
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          style={{ minHeight: 44 }}
+        >
+          グリッドを作成
+        </button>
+        {showCreate && (
+          <CreateGridModal
+            createName={createName}
+            setCreateName={setCreateName}
+            createEnv={createEnv}
+            setCreateEnv={setCreateEnv}
+            createLight={createLight}
+            setCreateLight={setCreateLight}
+            createX={createX}
+            setCreateX={setCreateX}
+            createY={createY}
+            setCreateY={setCreateY}
+            onSubmit={handleCreate}
+            onCancel={() => setShowCreate(false)}
+          />
         )}
+      </div>
+    );
+  }
+
+  // grids が 1 件以上ある通常表示。grid は activeId から導出済み。
+  // 念のため null チェック（reload 直後の同期問題で空になるケースを救う）。
+  if (!grid) {
+    return (
+      <div data-testid="fip-grid-view" className="text-sm text-neutral-600">
+        グリッドを選択してください。
       </div>
     );
   }
@@ -457,6 +527,103 @@ export default function GridEditor(): JSX.Element {
         <p data-testid="fip-grid-warning" className="text-sm text-amber-700">
           {warning}
         </p>
+      )}
+
+      {/* タブバー: 横スクロール対応 + 「+」「・・・」ボタン */}
+      <div data-testid="fip-grid-tabs" className="flex items-center gap-2">
+        <div className="flex flex-1 gap-1 overflow-x-auto pb-1">
+          {grids.map((g) => {
+            const isActive = g.id === activeId;
+            const isEditing = editingNameId === g.id;
+            return (
+              <button
+                key={g.id}
+                ref={(el) => {
+                  tabRefs.current[g.id] = el;
+                }}
+                type="button"
+                data-testid={`fip-grid-tab-${g.id}`}
+                data-active={isActive ? "1" : undefined}
+                onClick={() => {
+                  if (isEditing) return;
+                  setActiveId(g.id);
+                }}
+                onDoubleClick={() => handleStartRename(g)}
+                className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
+                  isActive
+                    ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-700"
+                    : "border-neutral-300 bg-white text-neutral-700"
+                }`}
+                style={{ minHeight: 44 }}
+              >
+                {isEditing ? (
+                  <input
+                    type="text"
+                    data-testid={`fip-grid-tab-name-input-${g.id}`}
+                    // biome-ignore lint/a11y/noAutofocus: 編集モード切替直後の小さな入力で UX 上必要
+                    autoFocus
+                    value={editingNameValue}
+                    onChange={(e) => setEditingNameValue(e.target.value.slice(0, GRID_NAME_MAX))}
+                    onBlur={() => void handleCommitRename()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleCommitRename();
+                      } else if (e.key === "Escape") {
+                        setEditingNameId(null);
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    maxLength={GRID_NAME_MAX}
+                    className="rounded border border-neutral-300 px-1 py-0.5 text-sm"
+                  />
+                ) : (
+                  <span>
+                    {g.name}{" "}
+                    <span className="text-xs text-neutral-500">
+                      {g.sizeX}×{g.sizeY}
+                    </span>
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          data-testid="fip-grid-tab-add"
+          onClick={() => setShowCreate(true)}
+          className="shrink-0 rounded-lg border border-emerald-500 bg-white px-3 py-2 text-sm font-semibold text-emerald-700"
+          style={{ minHeight: 44 }}
+          aria-label="新規グリッドを追加"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          data-testid="fip-grid-tab-manage"
+          onClick={() => setManageMode((v) => !v)}
+          className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
+            manageMode
+              ? "border-amber-500 bg-amber-50 font-semibold text-amber-700"
+              : "border-neutral-300 bg-white text-neutral-700"
+          }`}
+          style={{ minHeight: 44 }}
+          aria-label="並び替え・削除モード"
+        >
+          ・・・
+        </button>
+      </div>
+
+      {/* 並び替え・削除モード */}
+      {manageMode && (
+        <ManagePanel
+          grids={grids}
+          onMove={handleMove}
+          onRequestDelete={(g) => setDeleteConfirm(g)}
+          onRename={handleStartRename}
+          onClose={() => setManageMode(false)}
+        />
       )}
 
       <header className="space-y-2">
@@ -639,6 +806,320 @@ export default function GridEditor(): JSX.Element {
           </div>
         </div>
       )}
+
+      {showCreate && (
+        <CreateGridModal
+          createName={createName}
+          setCreateName={setCreateName}
+          createEnv={createEnv}
+          setCreateEnv={setCreateEnv}
+          createLight={createLight}
+          setCreateLight={setCreateLight}
+          createX={createX}
+          setCreateX={setCreateX}
+          createY={createY}
+          setCreateY={setCreateY}
+          onSubmit={handleCreate}
+          onCancel={() => setShowCreate(false)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <DeleteGridConfirm
+          target={deleteConfirm}
+          onConfirm={() => void handleDelete(deleteConfirm)}
+          onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// CreateGridModal: 既存の作成フォームをモーダル化
+// =============================================================================
+
+interface CreateGridModalProps {
+  createName: string;
+  setCreateName: (v: string) => void;
+  createEnv: GridEnvironment;
+  setCreateEnv: (v: GridEnvironment) => void;
+  createLight: GridLighting | "";
+  setCreateLight: (v: GridLighting | "") => void;
+  createX: number;
+  setCreateX: (v: number) => void;
+  createY: number;
+  setCreateY: (v: number) => void;
+  onSubmit: () => void | Promise<void>;
+  onCancel: () => void;
+}
+
+function CreateGridModal(props: CreateGridModalProps): JSX.Element {
+  const {
+    createName,
+    setCreateName,
+    createEnv,
+    setCreateEnv,
+    createLight,
+    setCreateLight,
+    createX,
+    setCreateX,
+    createY,
+    setCreateY,
+    onSubmit,
+    onCancel,
+  } = props;
+  return (
+    <div
+      data-testid="fip-grid-create-modal"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+    >
+      <div
+        data-testid="fip-grid-create-form"
+        className="w-full max-w-md space-y-3 rounded-lg border border-neutral-300 bg-white p-4"
+      >
+        <h3 className="text-base font-semibold">新しいグリッドを作成</h3>
+        <label className="block text-sm">
+          名前
+          <input
+            type="text"
+            data-testid="fip-grid-create-name"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value.slice(0, GRID_NAME_MAX))}
+            className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
+            maxLength={GRID_NAME_MAX}
+          />
+        </label>
+        <label className="block text-sm">
+          環境
+          <select
+            value={createEnv}
+            onChange={(e) => setCreateEnv(e.target.value as GridEnvironment)}
+            className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
+          >
+            {(Object.keys(ENVIRONMENT_LABELS) as GridEnvironment[]).map((k) => (
+              <option key={k} value={k}>
+                {ENVIRONMENT_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {createEnv === "indoor" && (
+          <label className="block text-sm">
+            照明
+            <select
+              value={createLight}
+              onChange={(e) => setCreateLight(e.target.value as GridLighting | "")}
+              className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2"
+            >
+              <option value="">未設定</option>
+              {(Object.keys(LIGHTING_LABELS) as GridLighting[]).map((k) => (
+                <option key={k} value={k}>
+                  {LIGHTING_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="flex gap-3">
+          <label className="block text-sm">
+            横
+            <input
+              type="number"
+              min={1}
+              max={9}
+              value={createX}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n)) return;
+                setCreateX(Math.max(1, Math.min(9, n)));
+              }}
+              className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
+            />
+          </label>
+          <label className="block text-sm">
+            縦
+            <input
+              type="number"
+              min={1}
+              max={9}
+              value={createY}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isFinite(n)) return;
+                setCreateY(Math.max(1, Math.min(9, n)));
+              }}
+              className="mt-1 block w-20 rounded border border-neutral-300 px-2 py-2"
+            />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="fip-grid-create-submit"
+            onClick={() => void onSubmit()}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            style={{ minHeight: 44 }}
+          >
+            作成
+          </button>
+          <button
+            type="button"
+            data-testid="fip-grid-create-cancel"
+            onClick={onCancel}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+            style={{ minHeight: 44 }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// ManagePanel: 並び替え・削除モード
+// =============================================================================
+
+interface ManagePanelProps {
+  grids: GridRecord[];
+  onMove: (id: string, dir: -1 | 1) => void | Promise<void>;
+  onRequestDelete: (g: GridRecord) => void;
+  onRename: (g: GridRecord) => void;
+  onClose: () => void;
+}
+
+function ManagePanel(props: ManagePanelProps): JSX.Element {
+  const { grids, onMove, onRequestDelete, onRename, onClose } = props;
+  return (
+    <div
+      data-testid="fip-grid-manage"
+      className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3"
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-amber-800">並び替え・削除モード</p>
+        <button
+          type="button"
+          data-testid="fip-grid-manage-close"
+          onClick={onClose}
+          className="rounded border border-neutral-300 bg-white px-3 py-1 text-xs"
+          style={{ minHeight: 32 }}
+        >
+          閉じる
+        </button>
+      </div>
+      <ul className="space-y-1">
+        {grids.map((g, i) => (
+          <li
+            key={g.id}
+            data-testid={`fip-grid-manage-row-${g.id}`}
+            className="flex items-center gap-1 rounded bg-white px-2 py-1"
+          >
+            <span className="flex-1 truncate text-sm">
+              {g.name}{" "}
+              <span className="text-xs text-neutral-500">
+                {g.sizeX}×{g.sizeY}
+              </span>
+            </span>
+            <button
+              type="button"
+              data-testid={`fip-grid-manage-up-${g.id}`}
+              disabled={i === 0}
+              onClick={() => void onMove(g.id, -1)}
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
+              style={{ minHeight: 32 }}
+              aria-label="上へ"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              data-testid={`fip-grid-manage-down-${g.id}`}
+              disabled={i === grids.length - 1}
+              onClick={() => void onMove(g.id, 1)}
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
+              style={{ minHeight: 32 }}
+              aria-label="下へ"
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              data-testid={`fip-grid-manage-rename-${g.id}`}
+              onClick={() => onRename(g)}
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs"
+              style={{ minHeight: 32 }}
+            >
+              名前
+            </button>
+            <button
+              type="button"
+              data-testid={`fip-grid-manage-delete-${g.id}`}
+              onClick={() => onRequestDelete(g)}
+              className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700"
+              style={{ minHeight: 32 }}
+            >
+              削除
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// =============================================================================
+// DeleteGridConfirm: 削除確認 (cells / plantings 件数を表示)
+// =============================================================================
+
+interface DeleteGridConfirmProps {
+  target: GridRecord;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function DeleteGridConfirm(props: DeleteGridConfirmProps): JSX.Element {
+  const { target, onConfirm, onCancel } = props;
+  const cellCount = target.cells.length;
+  const plantingCount = target.cells.filter((c) => c.currentPlantingId != null).length;
+  // 連作履歴の件数はクライアント側に持っていないため、件数表示は cells / plantings のみ。
+  // 「履歴も削除されます」という文言で網羅性を担保する。
+  return (
+    <div
+      data-testid="fip-grid-delete-confirm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-5">
+        <h3 className="text-base font-semibold text-red-700">グリッドを削除</h3>
+        <p className="text-sm text-neutral-700">
+          このグリッド「<strong>{target.name}</strong>」を削除します。
+          <br />
+          cells {cellCount} 個 / plantings {plantingCount} 個 / 連作履歴も削除されます。
+          <br />
+          <strong>この操作は取り消せません。</strong>
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="fip-grid-delete-ok"
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white"
+            style={{ minHeight: 44 }}
+          >
+            削除する
+          </button>
+          <button
+            type="button"
+            data-testid="fip-grid-delete-cancel"
+            onClick={onCancel}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+            style={{ minHeight: 44 }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
