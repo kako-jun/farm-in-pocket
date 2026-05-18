@@ -275,6 +275,27 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 
 - `fip:work-record-drafts-v1` — 下書きキュー（最大 100 件、古いものから trim）。
 
+### 振り返り 4 ビュー（Issue #30）
+
+`/record` ページは「投稿」タブの他に**振り返り 4 ビュー**を持ち、ハッシュルーティングで切り替えます。表示されるデータはすべて **D1 由来**（自分専用の `plantings` / `crop_history` / `nutrient_records` / `pesticide_records` / `ph_records`）で、Nostr リレーに投稿された kind:1 のタイムラインは含みません（コミュニティ系は #18 / #19）。
+
+| タブ | ハッシュ | 用途 |
+|---|---|---|
+| 投稿 | `/record` | 既存の作業記録フォーム |
+| カレンダー | `/record#calendar` | 月単位 heatmap。各日の `plantings` / `endings` / `care`（施肥+農薬+pH）件数をドット 3 色で表示 |
+| 作物別 | `/record#by-plant` | 育てたことのある作物（`plant_id`）ごとにアコーディオン。各作物の plantings を一覧 |
+| グリッド履歴 | `/record#cell-history` | グリッド別タブ → `(x, y)` 別の `crop_history` 縦表（直近 200 件） |
+| 失敗ログ | `/record#failures` | `state='ended'` で `end_tag` が `died` / `disease` / `pest` / `failed` の planting + `failure_memo` + 経過日数 |
+
+関連 API:
+
+- `GET /api/users/:pubkey/activity?pubkey=<hex64>&month=YYYY-MM` — カレンダー用 1 か月分の日次集計
+- `GET /api/users/:pubkey/plantings-by-plant?pubkey=<hex64>` — 作物別 plantings グループ
+- `GET /api/users/:pubkey/cell-histories?pubkey=<hex64>` — 全グリッド × セル × `crop_history`（200 件まで）
+- `GET /api/users/:pubkey/failures?pubkey=<hex64>` — 失敗 ended plantings 一覧（200 件まで）
+
+認可は Phase 1 と同じ「`?pubkey=` 必須」方式。`URL path の :pubkey` と `query の pubkey` が一致しない場合は 403。NIP-98 への置き換えは Issue #16+ で対応します。
+
 ## コミュニティ（みんな）
 
 `/community` ページから「`#farm-in-pocket` を付けて投稿しているユーザー」を一覧できます（Issue #18）。横長バナーカード（バナー + 丸アイコン + 表示名 + 最新作業）をスクロールできるシンプルな一覧で、各カードはタップで `/community/<npub>`（**他人の畑ページ** — Issue #19）に遷移します。

@@ -1,21 +1,23 @@
 ---
-import RecordForm from "../components/RecordForm";
+import RetrospectiveTabs from "../components/retrospective/RetrospectiveTabs";
 import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。
+// Issue #30: 「投稿」「カレンダー」「作物別」「グリッド履歴」「失敗ログ」のタブ切替を
+// hash routing で実装するため、ページ自体は SSG のまま React island に処理を委ねる。
 export const prerender = true;
 ---
 
 <MainLayout
   title="記録 — Farm in Pocket (ポケ農)"
-  description="今日の作業（種まき・水やり・収穫など）を Nostr に投稿します。"
+  description="今日の作業の投稿と、振り返り（カレンダー・作物別・グリッド履歴・失敗ログ）を表示します。"
 >
   <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-2xl mx-auto space-y-6">
     <header>
       <h1 class="text-2xl font-bold">📝 記録</h1>
     </header>
     <section>
-      <RecordForm client:load />
+      <RetrospectiveTabs client:load />
     </section>
   </main>
 </MainLayout>

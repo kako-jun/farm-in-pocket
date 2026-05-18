@@ -220,6 +220,40 @@ export interface PlantingRecord {
   note: string | null;
 }
 
+// ============================================================================
+// 振り返りビュー DTO (Issue #30)
+//   * RetrospectiveDayActivity: ある 1 日の活動件数。
+//     - plantings: その日に新しく start した planting の件数
+//     - endings: その日に ended になった planting の件数
+//     - care: nutrient_records + pesticide_records + ph_records の件数の合計
+//   * RetrospectiveActivityMonth: YYYY-MM-DD をキーにしたマップ。値が無い日（活動ゼロ）は
+//     キー自体が無い前提で、UI 側で fallback して 0 表示にする。
+//   * PlantingsByPlantGroup: plant_id でグルーピングした PlantingRecord の集まり。
+//     plant が削除されていた場合は API 側で plantName="(削除済み作物)" のフォールバックを当てる。
+//   * FailurePlantingRecord: PlantingRecord に plantName / plantFamily を添えた一覧用拡張。
+//     失敗ログでは作物名と科を必ず出すので、JOIN 結果を凍結して返す。
+// ============================================================================
+
+export interface RetrospectiveDayActivity {
+  plantings: number;
+  endings: number;
+  care: number;
+}
+
+export type RetrospectiveActivityMonth = Record<string, RetrospectiveDayActivity>;
+
+export interface PlantingsByPlantGroup {
+  plantId: number;
+  plantName: string;
+  plantFamily: string;
+  plantings: PlantingRecord[];
+}
+
+export interface FailurePlantingRecord extends PlantingRecord {
+  plantName: string;
+  plantFamily: string;
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;
