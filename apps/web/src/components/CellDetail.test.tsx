@@ -643,6 +643,193 @@ describe("CellDetail", () => {
   // Issue #26: 経過時間フェード
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // Issue #29: 作物ライフサイクル状態管理
+  // -------------------------------------------------------------------------
+
+  it("Issue #29: planted 状態の作物に「生育中にする」「終了する」ボタンが出る → 生育中にする で PATCH 呼び出し", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "planted",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: null,
+          endTag: null,
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: null,
+          note: null,
+        },
+      },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7$/.test(u) && i?.method === "PATCH",
+      response: {
+        ok: true,
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "growing",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: null,
+          endTag: null,
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: null,
+          note: null,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    const { onChanged } = renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-planting-section")).toBeInTheDocument();
+    });
+    // バッジは planted を出す
+    expect(screen.getByTestId("fip-cell-detail-planting-state-badge").textContent).toBe("植え付け");
+    expect(screen.getByTestId("fip-cell-detail-planting-seeding-date").textContent).toContain(
+      "2026-05-01",
+    );
+    // 「生育中にする」ボタンを押す → PATCH に state=growing が送られる
+    await user.click(screen.getByTestId("fip-cell-detail-planting-to-growing"));
+    await waitFor(() => {
+      const patch = fetchCalls.find(
+        (c) => c.method === "PATCH" && /\/api\/plantings\/7$/.test(c.url),
+      );
+      expect(patch).toBeDefined();
+      const body = JSON.parse(patch?.body ?? "{}");
+      expect(body).toMatchObject({ state: "growing", pubkey: PUBKEY });
+    });
+    await waitFor(() => {
+      expect(onChanged).toHaveBeenCalled();
+    });
+    // バッジが growing に更新される
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-planting-state-badge").textContent).toBe("生育中");
+    });
+  });
+
+  it("Issue #29: 「終了する」ボタン → モーダルで end_tag + failure_memo 入力 → PATCH state=ended が呼ばれる", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "growing",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: null,
+          endTag: null,
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: null,
+          note: null,
+        },
+      },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plantings\/7$/.test(u) && i?.method === "PATCH",
+      response: {
+        ok: true,
+        planting: {
+          id: 7,
+          cellId: 11,
+          plantId: 1,
+          seedProductId: null,
+          state: "ended",
+          seedingDate: "2026-05-01",
+          germinationDate: null,
+          plantingDate: null,
+          endDate: "2026-08-15",
+          endTag: "died",
+          seedingDepthCm: null,
+          plantSpacingCm: null,
+          rowSpacingCm: null,
+          failureMemo: "猛暑でしおれた",
+          note: null,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-planting-section")).toBeInTheDocument();
+    });
+    // growing 状態であることを確認
+    expect(screen.getByTestId("fip-cell-detail-planting-state-badge").textContent).toBe("生育中");
+    // 「終了する」を押す → フォームが出る
+    await user.click(screen.getByTestId("fip-cell-detail-planting-end-open"));
+    expect(screen.getByTestId("fip-cell-detail-planting-end-form")).toBeInTheDocument();
+    // end_tag を died に変更
+    const select = screen.getByTestId(
+      "fip-cell-detail-planting-end-tag-select",
+    ) as HTMLSelectElement;
+    await user.selectOptions(select, "died");
+    // failure_memo を入力
+    await user.type(
+      screen.getByTestId("fip-cell-detail-planting-failure-memo-input"),
+      "猛暑でしおれた",
+    );
+    // 終了する
+    await user.click(screen.getByTestId("fip-cell-detail-planting-end-submit"));
+    await waitFor(() => {
+      const patch = fetchCalls.find(
+        (c) => c.method === "PATCH" && /\/api\/plantings\/7$/.test(c.url),
+      );
+      expect(patch).toBeDefined();
+      const body = JSON.parse(patch?.body ?? "{}");
+      expect(body).toMatchObject({
+        state: "ended",
+        endTag: "died",
+        failureMemo: "猛暑でしおれた",
+        pubkey: PUBKEY,
+      });
+      expect(typeof body.endDate).toBe("string");
+    });
+    // 更新後はバッジが「終了」+ end_tag「枯れた」+ failure_memo が表示される
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-planting-state-badge").textContent).toBe("終了");
+    });
+    expect(screen.getByTestId("fip-cell-detail-planting-end-tag").textContent).toContain("枯れた");
+    expect(screen.getByTestId("fip-cell-detail-planting-failure-memo").textContent).toContain(
+      "猛暑でしおれた",
+    );
+  });
+
   it("Issue #26: 古い施肥履歴行ほど opacity が低くフェードする", async () => {
     const oldDate = new Date(Date.now() - 90 * 86_400_000).toISOString();
     const newDate = new Date(Date.now() - 1 * 86_400_000).toISOString();

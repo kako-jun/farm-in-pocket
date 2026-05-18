@@ -45,6 +45,39 @@ export type PlantingEndTag =
   | "failed"
   | "removed";
 
+/**
+ * Issue #29: planting ライフサイクル UI 用ラベル。
+ * 終了タグは「咲いた / 実った / 枯れた / 病気 / 虫害 / 失敗 / 抜いた」の 7 種。
+ * UI セレクタの選択肢順は PLANTING_END_TAGS（下記）の正本順に従う。
+ */
+export const PLANTING_END_TAG_LABELS_JA: Record<PlantingEndTag, string> = {
+  bloomed: "咲いた",
+  fruited: "実った",
+  died: "枯れた",
+  disease: "病気",
+  pest: "虫害",
+  failed: "失敗（原因不明）",
+  removed: "抜いた",
+};
+
+/** UI セレクタ順を兼ねた end_tag の正本順。 */
+export const PLANTING_END_TAGS: readonly PlantingEndTag[] = [
+  "bloomed",
+  "fruited",
+  "died",
+  "disease",
+  "pest",
+  "failed",
+  "removed",
+] as const;
+
+/** PlantingState 用 UI ラベル。 */
+export const PLANTING_STATE_LABELS_JA: Record<PlantingState, string> = {
+  planted: "植え付け",
+  growing: "生育中",
+  ended: "終了",
+};
+
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
 // ============================================================================
@@ -160,6 +193,30 @@ export interface PhRecord {
   cellId: number;
   measuredAt: string;
   value: number;
+  note: string | null;
+}
+
+// ============================================================================
+// planting DTO (Issue #29)
+//   * cells.current_planting_id が指す planting の詳細を camelCase で返す。
+//   * state 遷移 (planted → growing → ended) と end_tag / failure_memo を含む。
+// ============================================================================
+
+export interface PlantingRecord {
+  id: number;
+  cellId: number;
+  plantId: number;
+  seedProductId: number | null;
+  state: PlantingState;
+  seedingDate: string | null;
+  germinationDate: string | null;
+  plantingDate: string | null;
+  endDate: string | null;
+  endTag: PlantingEndTag | null;
+  seedingDepthCm: number | null;
+  plantSpacingCm: number | null;
+  rowSpacingCm: number | null;
+  failureMemo: string | null;
   note: string | null;
 }
 
