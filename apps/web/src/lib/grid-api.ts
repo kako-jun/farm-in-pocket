@@ -22,6 +22,8 @@ import type {
   PlantingState,
   RotationWarning,
   SoilType,
+  WateringDueRecord,
+  WateringSettings,
 } from "@farm-in-pocket/shared";
 
 const API_BASE: string = (import.meta.env.PUBLIC_FARM_API_BASE as string | undefined) ?? "";
@@ -407,6 +409,78 @@ export async function fetchCellPh(
 ): Promise<PhRecord[]> {
   const data = await jsonFetch<{ records: PhRecord[] }>(
     url(`/api/grids/${gridId}/cells/${x}/${y}/ph?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.records;
+}
+
+// ---- watering reminder (Issue #31) ---------------------------------------
+
+/**
+ * planting の水やり間隔設定を取得する。未設定なら null を返す。
+ */
+export async function fetchWateringSettings(
+  plantingId: number,
+  pubkey: string,
+): Promise<WateringSettings | null> {
+  const data = await jsonFetch<{ settings: WateringSettings | null }>(
+    url(`/api/plantings/${plantingId}/watering?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.settings;
+}
+
+/**
+ * planting の水やり間隔を設定する。intervalDays を null / 0 にすると DELETE（解除）。
+ * - 設定後の next_due_at は API 側で last_watered_at + interval（無ければ today + interval）。
+ */
+export async function setWateringInterval(
+  plantingId: number,
+  intervalDays: number | null,
+  pubkey: string,
+): Promise<WateringSettings | null> {
+  const data = await jsonFetch<{ settings: WateringSettings | null }>(
+    url(`/api/plantings/${plantingId}/watering`),
+    {
+      method: "PUT",
+      body: JSON.stringify({ pubkey, intervalDays }),
+    },
+  );
+  return data.settings;
+}
+
+/**
+ * 水やりを実施した記録を POST する。
+ * - settings が無ければ watering_log だけ残し、settings は更新しない（戻り値 settings=null）。
+ * - settings があれば last_watered_at / next_due_at を更新して返す。
+ */
+export async function recordWatering(
+  plantingId: number,
+  pubkey: string,
+  wateredAt?: string,
+  note?: string,
+): Promise<{ wateredAt: string; settings: WateringSettings | null }> {
+  return jsonFetch<{ wateredAt: string; settings: WateringSettings | null }>(
+    url(`/api/plantings/${plantingId}/water`),
+    {
+      method: "POST",
+      body: JSON.stringify({
+        pubkey,
+        ...(wateredAt !== undefined ? { wateredAt } : {}),
+        ...(note !== undefined ? { note } : {}),
+      }),
+    },
+  );
+}
+
+/**
+ * 指定日に水やり期日を迎える plantings 一覧を取得する。
+ * - on 省略時は API 側で今日 (UTC YYYY-MM-DD)。
+ * - state="ended" の planting は除外される。
+ */
+export async function fetchWateringDue(pubkey: string, on?: string): Promise<WateringDueRecord[]> {
+  const q = new URLSearchParams({ pubkey });
+  if (on) q.set("on", on);
+  const data = await jsonFetch<{ records: WateringDueRecord[] }>(
+    url(`/api/users/${encodeURIComponent(pubkey)}/watering-due?${q.toString()}`),
   );
   return data.records;
 }
