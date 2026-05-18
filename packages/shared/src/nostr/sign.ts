@@ -14,7 +14,7 @@ import "./_hashes";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { schnorr } from "@noble/secp256k1";
 import type { NostrEvent, UnsignedNostrEvent } from "../mypace/types";
-import { bytesToHex } from "./bech32";
+import { bytesToHex, hexToBytes } from "./bech32";
 import { getPublicKey, isValidSecretKey } from "./keys";
 
 export interface SignEventDraft {
@@ -92,24 +92,12 @@ export function verifyEvent(event: NostrEvent): boolean {
     if (bytesToHex(idBytes) !== event.id) {
       return false;
     }
-    const sig = hexToBytesLocal(event.sig);
-    const pub = hexToBytesLocal(event.pubkey);
+    const sig = hexToBytes(event.sig);
+    const pub = hexToBytes(event.pubkey);
     return schnorr.verify(sig, idBytes, pub);
   } catch {
     return false;
   }
-}
-
-// 循環参照を避けるためのローカル hex → bytes（bech32.ts と同等）。
-function hexToBytesLocal(hex: string): Uint8Array {
-  if (typeof hex !== "string" || hex.length % 2 !== 0) {
-    throw new Error("invalid hex");
-  }
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
 }
 
 // re-export してテストから unsigned 型を扱いやすくする
