@@ -1,5 +1,6 @@
 ---
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
+import AccountSetup from "../components/AccountSetup";
 import PrivacyNotice from "../components/PrivacyNotice";
 import "../styles/global.css";
 ---
@@ -18,5 +19,6 @@ import "../styles/global.css";
       <p class="text-sm text-neutral-500">v{FARM_IN_POCKET_VERSION}</p>
     </main>
     <PrivacyNotice client:load />
+    <AccountSetup client:load />
   </body>
 </html>
