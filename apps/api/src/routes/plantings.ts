@@ -98,7 +98,7 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
         AND ch.x = ?
         AND ch.y = ?
         AND ch.plant_family = ?
-      ORDER BY ch.planted_at DESC
+      ORDER BY ch.planted_at DESC, (ch.ended_at IS NULL) DESC, ch.id DESC
       LIMIT 1`,
   )
     .bind(gridId, x, y, plant.family)
