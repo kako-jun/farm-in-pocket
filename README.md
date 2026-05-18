@@ -109,6 +109,12 @@ main マージ後、GitHub Actions が以下を実行:
 - **環境フラグ**: グリッド単位で「屋外（日向 / 半日陰 / 日陰）/ 室内 / 温室」を選択。室内のときだけ照明（自然光 / 育成ライト / 蛍光灯）を追加で選べる。屋外と室内で容器の選択肢を出し分け。
 - **作物を植える**: セル → 「作物を植える」→ 検索（debounce 300ms）→ 選んだ作物の `plantings` レコードを作成。`seeding_date` は今日に自動セット。ライフサイクル詳細（germination / state 遷移 / 終了タグ）は後続 Issue で。
 - **サイズ変更**: グリッドの size_x / size_y を変えると「過去の連作履歴との対応がリセットされます」確認ダイアログが出る（座標ベースで履歴管理しているため）。
+- **セル詳細・施肥/農薬の記録**（Issue #15）。セルをタップすると詳細モーダルが開き、容器/用土・現在の作物・直近 10 件ずつの履歴を確認でき、「🍃 施肥」「🛡️ 農薬」ボタンで小フォームから種別・量・メモを記録できる（POST `/api/grids/:gridId/cells/:x/:y/{nutrient,pesticide}`）。
+  - 「💧 水やり」は plantings の watering_settings 統合になるため別 Issue で実装予定。
+  - **施肥バッジ**: 直近 30 日以内に施肥していたら右下に緑の点（`●` + 日数）。
+  - **農薬バッジ**: 直近 14 日以内に農薬していたら左下に赤の点。
+  - 経過時間に応じた fade（古いほど薄くなる演出）は **Phase 2 (#26)** で実装予定。本 Issue では閾値（30日 / 14日）で「出すか出さないか」だけ判定する。
+  - 編集アクション（容器を変える / 用土を変える / VOID / クリア / 作物を植える）は詳細モーダル下部の小さなボタン群から委譲される。
 
 データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
 
@@ -128,6 +134,9 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `GET    /api/plants/:id` — 単体取得
 - `POST   /api/grids/:gridId/cells/:x/:y/plantings` — 作物を植える
 - `DELETE /api/plantings/:id` — 撤去（cells.current_planting_id を NULL に戻す）
+- `POST   /api/grids/:gridId/cells/:x/:y/nutrient` — 施肥記録（Issue #15）
+- `POST   /api/grids/:gridId/cells/:x/:y/pesticide` — 農薬記録（Issue #15）
+- `GET    /api/grids/:gridId/cells/:x/:y/records?pubkey=<hex64>` — 直近の施肥/農薬を各 10 件返す（Issue #15）
 
 ## ディレクトリ構成
 

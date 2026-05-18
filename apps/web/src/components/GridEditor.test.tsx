@@ -90,6 +90,8 @@ describe("GridEditor", () => {
                 currentPlantingId: null,
                 currentPlantId: null,
                 currentPlantName: null,
+                lastFertilizedAt: null,
+                lastPesticideAt: null,
               },
             ],
           },
@@ -105,7 +107,7 @@ describe("GridEditor", () => {
     expect(c00.getAttribute("data-void")).toBe("1");
   });
 
-  it("セルタップでメニューモーダルが開く", async () => {
+  it("セルタップで詳細モーダルが開き、編集アクションへ遷移できる (Issue #15)", async () => {
     seedSecretKey();
     routes.push({
       match: (u) => u.includes("/api/grids?pubkey="),
@@ -125,11 +127,18 @@ describe("GridEditor", () => {
         ],
       },
     });
+    // 履歴 fetch を空で返す
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/1\/1\/records/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { nutrients: [], pesticides: [] },
+    });
     const user = userEvent.setup();
     render(<GridEditor />);
     await user.click(await screen.findByTestId("fip-grid-cell-1-1"));
-    expect(screen.getByTestId("fip-cell-modal")).toBeInTheDocument();
-    expect(screen.getByTestId("fip-cell-menu-void")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-cell-detail-modal")).toBeInTheDocument();
+    // 詳細モーダル内の「VOID にする」リンクは存在する（旧 menu 相当の操作はここから）
+    expect(screen.getByTestId("fip-cell-detail-edit-void")).toBeInTheDocument();
   });
 
   it("VOID ボタンを押すと PUT /cells/:x/:y が呼ばれて containerType: void が送られる", async () => {
@@ -166,14 +175,23 @@ describe("GridEditor", () => {
           currentPlantingId: null,
           currentPlantId: null,
           currentPlantName: null,
+          lastFertilizedAt: null,
+          lastPesticideAt: null,
         },
       },
+    });
+    // 詳細モーダルが履歴を fetch するので、空で返すルートを足す
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { nutrients: [], pesticides: [] },
     });
 
     const user = userEvent.setup();
     render(<GridEditor />);
     await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
-    await user.click(screen.getByTestId("fip-cell-menu-void"));
+    // Issue #15: タップで詳細モーダルが開く。VOID 操作は詳細モーダル内の編集リンクから。
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-void"));
 
     await waitFor(() => {
       const putCall = fetchCalls.find(
@@ -375,6 +393,8 @@ describe("GridEditor", () => {
                 currentPlantingId: 10,
                 currentPlantId: 5,
                 currentPlantName: "トマト",
+                lastFertilizedAt: null,
+                lastPesticideAt: null,
               },
               {
                 id: 2,
@@ -386,6 +406,8 @@ describe("GridEditor", () => {
                 currentPlantingId: null,
                 currentPlantId: null,
                 currentPlantName: null,
+                lastFertilizedAt: null,
+                lastPesticideAt: null,
               },
             ],
           }),
@@ -456,10 +478,17 @@ describe("GridEditor", () => {
         ],
       },
     });
+    // 詳細モーダルの履歴 fetch
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { nutrients: [], pesticides: [] },
+    });
     const user = userEvent.setup();
     render(<GridEditor />);
     await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
-    await user.click(screen.getByTestId("fip-cell-menu-container"));
+    // Issue #15: 詳細モーダルから「容器を変える」で旧 container-list へ遷移する
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-container"));
     expect(screen.getByTestId("fip-cell-container-list")).toBeInTheDocument();
     // 屋外: jiue (地植え) は出る
     expect(screen.getByTestId("fip-cell-container-jiue")).toBeInTheDocument();

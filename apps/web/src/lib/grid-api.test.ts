@@ -5,8 +5,11 @@ import {
   deleteCell,
   deleteGrid,
   deletePlanting,
+  fetchCellRecords,
   listGrids,
   putCell,
+  recordNutrient,
+  recordPesticide,
   searchPlants,
   updateGrid,
 } from "./grid-api";
@@ -140,5 +143,78 @@ describe("grid-api", () => {
   it("API エラー時は Error を throw する", async () => {
     mockFetch({ error: "invalid pubkey" }, 400);
     await expect(listGrids("nope")).rejects.toThrow(/invalid pubkey/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #15: cell-actions ラッパー
+  // -------------------------------------------------------------------------
+
+  it("recordNutrient は POST /api/grids/:id/cells/:x/:y/nutrient に投げる", async () => {
+    mockFetch({
+      record: {
+        id: 1,
+        cellId: 11,
+        appliedAt: "2026-05-18T00:00:00Z",
+        nutrientType: "organic",
+        materialId: null,
+        amount: 5,
+        amountUnit: "g",
+        note: null,
+      },
+    });
+    const rec = await recordNutrient("g1", "pk", 1, 2, {
+      nutrientType: "organic",
+      amount: 5,
+      amountUnit: "g",
+    });
+    expect(first().url).toBe("/api/grids/g1/cells/1/2/nutrient");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ pubkey: "pk", nutrientType: "organic", amount: 5 });
+    expect(rec.id).toBe(1);
+  });
+
+  it("recordPesticide は POST /api/grids/:id/cells/:x/:y/pesticide に投げる", async () => {
+    mockFetch({
+      record: {
+        id: 2,
+        cellId: 11,
+        appliedAt: "2026-05-18T00:00:00Z",
+        pesticideType: "insecticide",
+        materialId: null,
+        targetTags: null,
+        amount: null,
+        amountUnit: null,
+        dilutionRatio: 1000,
+        note: null,
+      },
+    });
+    const rec = await recordPesticide("g1", "pk", 0, 1, {
+      pesticideType: "insecticide",
+      dilutionRatio: 1000,
+      targetTags: ["aphid"],
+    });
+    expect(first().url).toBe("/api/grids/g1/cells/0/1/pesticide");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({
+      pubkey: "pk",
+      pesticideType: "insecticide",
+      dilutionRatio: 1000,
+    });
+    expect(body.targetTags).toEqual(["aphid"]);
+    expect(rec.dilutionRatio).toBe(1000);
+  });
+
+  it("fetchCellRecords は GET /api/grids/:id/cells/:x/:y/records?pubkey= を叩く", async () => {
+    mockFetch({
+      nutrients: [],
+      pesticides: [],
+    });
+    const r = await fetchCellRecords("g1", "pk", 2, 3);
+    expect(first().url).toBe("/api/grids/g1/cells/2/3/records?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(r.nutrients).toEqual([]);
+    expect(r.pesticides).toEqual([]);
   });
 });

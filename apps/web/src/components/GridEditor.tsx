@@ -20,6 +20,7 @@ import {
   updateGrid,
 } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
+import CellDetail from "./CellDetail";
 
 const ENVIRONMENT_LABELS: Record<GridEnvironment, string> = {
   outdoor_sunny: "屋外（日向）",
@@ -109,7 +110,22 @@ function buildCellMap(cells: CellRecord[]): CellMap {
   return m;
 }
 
-type ModalKind = "menu" | "container" | "soil" | "plant" | null;
+// "detail" は Issue #15 で追加した CellDetail（履歴 + クイック施肥/農薬）の主画面。
+// "menu" は旧 Phase 1 のメニュー UI で、既存テストが触っているので互換維持のため残す。
+type ModalKind = "detail" | "menu" | "container" | "soil" | "plant" | null;
+
+// バッジ閾値 (Issue #15 spec)
+// Phase 2 (#26) で経過時間 fade に置き換える予定。
+const FERTILIZE_BADGE_DAYS = 30;
+const PESTICIDE_BADGE_DAYS = 14;
+
+function daysAgo(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diffMs = Date.now() - t;
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
 
 interface OpenCell {
   x: number;
@@ -325,7 +341,8 @@ export default function GridEditor(): JSX.Element {
 
   const handleCellTap = (x: number, y: number): void => {
     setOpenCell({ x, y });
-    setModal("menu");
+    // Issue #15: タップで詳細ビューを開く。編集アクションは詳細ビュー内のリンクから委譲する。
+    setModal("detail");
   };
 
   const handleSetContainer = async (containerType: ContainerType): Promise<void> => {
@@ -710,6 +727,18 @@ export default function GridEditor(): JSX.Element {
               cell?.containerType && cell.containerType !== "void" ? cell.containerType : null;
             const hasContainer = containerNonVoid !== null;
             const hasPlanting = cell?.currentPlantingId != null;
+            // Issue #15: 施肥 / 農薬バッジ判定。閾値内なら点を出す。fade は Phase 2 で実装。
+            const fertilizedDays = daysAgo(cell?.lastFertilizedAt ?? null);
+            const pesticideDays = daysAgo(cell?.lastPesticideAt ?? null);
+            const showFertilizeBadge =
+              !isVoid && fertilizedDays !== null && fertilizedDays <= FERTILIZE_BADGE_DAYS;
+            const showPesticideBadge =
+              !isVoid && pesticideDays !== null && pesticideDays <= PESTICIDE_BADGE_DAYS;
+            const ariaLabelParts: string[] = [];
+            if (showFertilizeBadge && fertilizedDays !== null)
+              ariaLabelParts.push(`最後の施肥: ${fertilizedDays}日前`);
+            if (showPesticideBadge && pesticideDays !== null)
+              ariaLabelParts.push(`最後の農薬: ${pesticideDays}日前`);
             const style: React.CSSProperties = isVoid
               ? {
                   backgroundColor: "#e5e7eb",
@@ -727,8 +756,11 @@ export default function GridEditor(): JSX.Element {
                 data-testid={`fip-grid-cell-${x}-${y}`}
                 data-void={isVoid ? "1" : undefined}
                 data-has-plant={hasPlanting ? "1" : undefined}
+                data-fertilize-badge={showFertilizeBadge ? "1" : undefined}
+                data-pesticide-badge={showPesticideBadge ? "1" : undefined}
+                aria-label={ariaLabelParts.length > 0 ? ariaLabelParts.join(" / ") : undefined}
                 onClick={() => handleCellTap(x, y)}
-                className="aspect-square rounded border border-neutral-300 text-xs flex items-center justify-center hover:border-emerald-500"
+                className="relative aspect-square rounded border border-neutral-300 text-xs flex items-center justify-center hover:border-emerald-500"
                 style={{ minHeight: 48, ...style }}
               >
                 {isVoid ? (
@@ -747,13 +779,55 @@ export default function GridEditor(): JSX.Element {
                 ) : (
                   <span className="text-neutral-300 text-[10px]">·</span>
                 )}
+                {showFertilizeBadge && fertilizedDays !== null && (
+                  <span
+                    data-testid={`fip-grid-cell-${x}-${y}-fertilize-badge`}
+                    className="absolute bottom-0.5 right-0.5 flex items-center gap-0.5 rounded-full bg-emerald-600 px-1 text-[8px] font-semibold leading-none text-white"
+                    title={`最後の施肥: ${fertilizedDays}日前`}
+                  >
+                    <span aria-hidden="true">●</span>
+                    <span>{fertilizedDays}d</span>
+                  </span>
+                )}
+                {showPesticideBadge && pesticideDays !== null && (
+                  <span
+                    data-testid={`fip-grid-cell-${x}-${y}-pesticide-badge`}
+                    className="absolute bottom-0.5 left-0.5 flex items-center gap-0.5 rounded-full bg-red-600 px-1 text-[8px] font-semibold leading-none text-white"
+                    title={`最後の農薬: ${pesticideDays}日前`}
+                  >
+                    <span aria-hidden="true">●</span>
+                    <span>{pesticideDays}d</span>
+                  </span>
+                )}
               </button>
             );
           }),
         )}
       </div>
 
-      {modal !== null && openCell && (
+      {modal === "detail" && openCell && pubkey && (
+        <CellDetail
+          pubkey={pubkey}
+          grid={grid}
+          cell={cellMap.get(`${openCell.x},${openCell.y}`) ?? null}
+          cellX={openCell.x}
+          cellY={openCell.y}
+          onClose={() => {
+            setModal(null);
+            setOpenCell(null);
+          }}
+          onChanged={() => {
+            if (pubkey) return reload(pubkey);
+          }}
+          onEditContainer={() => setModal("container")}
+          onEditSoil={() => setModal("soil")}
+          onPlant={() => setModal("plant")}
+          onSetVoid={handleSetVoid}
+          onClear={handleClearCell}
+        />
+      )}
+
+      {modal !== null && modal !== "detail" && openCell && (
         <CellModal
           openCell={openCell}
           grid={grid}
@@ -1131,7 +1205,7 @@ function DeleteGridConfirm(props: DeleteGridConfirmProps): JSX.Element {
 interface CellModalProps {
   openCell: OpenCell;
   grid: GridRecord;
-  modal: Exclude<ModalKind, null>;
+  modal: Exclude<ModalKind, null | "detail">;
   setModal: (m: ModalKind) => void;
   onClose: () => void;
   onSetContainer: (c: ContainerType) => void | Promise<void>;

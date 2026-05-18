@@ -10,6 +10,10 @@ import type {
   GridEnvironment,
   GridLighting,
   GridRecord,
+  NutrientRecord,
+  NutrientType,
+  PesticideRecord,
+  PesticideType,
   PlantSummary,
   SoilType,
 } from "@farm-in-pocket/shared";
@@ -179,4 +183,76 @@ export async function deletePlanting(id: number, pubkey: string): Promise<void> 
   await jsonFetch<{ ok: true }>(url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`), {
     method: "DELETE",
   });
+}
+
+// ---- cell actions (Issue #15) --------------------------------------------
+
+export interface RecordNutrientInput {
+  nutrientType: NutrientType;
+  appliedAt?: string;
+  amount?: number;
+  amountUnit?: string;
+  materialId?: number;
+  note?: string;
+}
+
+export async function recordNutrient(
+  gridId: string,
+  pubkey: string,
+  x: number,
+  y: number,
+  input: RecordNutrientInput,
+): Promise<NutrientRecord> {
+  const data = await jsonFetch<{ record: NutrientRecord }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/nutrient`),
+    {
+      method: "POST",
+      body: JSON.stringify({ ...input, pubkey }),
+    },
+  );
+  return data.record;
+}
+
+export interface RecordPesticideInput {
+  pesticideType: PesticideType;
+  appliedAt?: string;
+  amount?: number;
+  amountUnit?: string;
+  materialId?: number;
+  targetTags?: string[];
+  dilutionRatio?: number;
+  note?: string;
+}
+
+export async function recordPesticide(
+  gridId: string,
+  pubkey: string,
+  x: number,
+  y: number,
+  input: RecordPesticideInput,
+): Promise<PesticideRecord> {
+  const data = await jsonFetch<{ record: PesticideRecord }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/pesticide`),
+    {
+      method: "POST",
+      body: JSON.stringify({ ...input, pubkey }),
+    },
+  );
+  return data.record;
+}
+
+export interface CellRecordsResult {
+  nutrients: NutrientRecord[];
+  pesticides: PesticideRecord[];
+}
+
+export async function fetchCellRecords(
+  gridId: string,
+  pubkey: string,
+  x: number,
+  y: number,
+): Promise<CellRecordsResult> {
+  return jsonFetch<CellRecordsResult>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/records?pubkey=${encodeURIComponent(pubkey)}`),
+  );
 }
