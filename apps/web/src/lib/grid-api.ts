@@ -20,10 +20,12 @@ import type {
   PlantingEndTag,
   PlantingRecord,
   PlantingState,
+  ProfileRecord,
   RotationWarning,
   SoilType,
   WateringDueRecord,
   WateringSettings,
+  WeatherCacheRecord,
 } from "@farm-in-pocket/shared";
 
 const API_BASE: string = (import.meta.env.PUBLIC_FARM_API_BASE as string | undefined) ?? "";
@@ -483,4 +485,56 @@ export async function fetchWateringDue(pubkey: string, on?: string): Promise<Wat
     url(`/api/users/${encodeURIComponent(pubkey)}/watering-due?${q.toString()}`),
   );
   return data.records;
+}
+
+// ---- profile / weather (Issue #32) ---------------------------------------
+
+/**
+ * 自分のプロフィールを取得する。未作成なら null。
+ * Phase 2 は pubkey をクエリで渡すだけ（NIP-98 認可は Phase 3+ の Issue で）。
+ */
+export async function fetchProfile(pubkey: string): Promise<ProfileRecord | null> {
+  const data = await jsonFetch<{ profile: ProfileRecord | null }>(
+    url(`/api/profiles/me?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.profile;
+}
+
+export interface UpdateProfileInput {
+  /** 表示名（null で削除、undefined で据え置き） */
+  displayName?: string | null;
+  /** 地域文字列（市区町村レベル: 例「石川県金沢市」、null で削除） */
+  region?: string | null;
+  /** locale: "ja" / "en" 等。null/undefined は据え置き */
+  locale?: string | null;
+}
+
+/**
+ * プロフィール upsert。指定したフィールドだけ反映する。
+ */
+export async function updateProfile(
+  pubkey: string,
+  patch: UpdateProfileInput,
+): Promise<ProfileRecord> {
+  const data = await jsonFetch<{ ok: boolean; profile: ProfileRecord }>(url("/api/profiles/me"), {
+    method: "PUT",
+    body: JSON.stringify({ pubkey, ...patch }),
+  });
+  return data.profile;
+}
+
+export interface WeatherFetchResult {
+  record: WeatherCacheRecord | null;
+  /** 取得失敗時は record=null + error にコードが入る */
+  error?: string;
+}
+
+/**
+ * 指定地域 / 指定日の気象データを取得する。
+ * - API 側で weather_cache を見て、なければ Open-Meteo へ問い合わせ → INSERT。
+ * - 取得失敗は 200 + { record: null, error } で返るので throw しない。
+ */
+export async function fetchWeather(region: string, date: string): Promise<WeatherFetchResult> {
+  const q = new URLSearchParams({ region, date });
+  return jsonFetch<WeatherFetchResult>(url(`/api/weather?${q.toString()}`));
 }

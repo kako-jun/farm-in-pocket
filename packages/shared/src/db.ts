@@ -284,6 +284,47 @@ export interface WateringDueRecord {
   daysOverdue: number;
 }
 
+// ============================================================================
+// プロフィール DTO (Issue #32)
+//   * 地域は市区町村レベル（例: 「石川県金沢市」）。Open-Meteo geocoding API へ
+//     そのまま投げる前提。NIP-98 認可未導入のため pubkey は body/query で受ける。
+// ============================================================================
+
+export interface ProfileRecord {
+  pubkey: string;
+  displayName: string | null;
+  region: string | null;
+  locale: string;
+}
+
+// ============================================================================
+// 気象データキャッシュ DTO (Issue #32)
+//   * (region, date) UNIQUE。過去日は再取得しない、当日は fetched_at から 6 時間
+//     経過すれば再取得を許容する。
+//   * weather_code は WMO 数値の文字列表現（既存スキーマが TEXT なのに合わせる）。
+//   * 室内グリッド（GridEnvironment in ('indoor','greenhouse')）には付与しない。
+// ============================================================================
+
+export interface WeatherCacheRecord {
+  region: string;
+  date: string;
+  tempMax: number | null;
+  tempMin: number | null;
+  tempAvg: number | null;
+  /** WMO weather interpretation code（0-99）を文字列で保持する */
+  weatherCode: string | null;
+  sunshineHours: number | null;
+  fetchedAt: string;
+}
+
+/**
+ * 屋外グリッドかどうか（気象データを使うか）の判定。
+ * indoor / greenhouse は気象 UI を非表示にする。
+ */
+export function isOutdoorEnvironment(env: GridEnvironment): boolean {
+  return env !== "indoor" && env !== "greenhouse";
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;

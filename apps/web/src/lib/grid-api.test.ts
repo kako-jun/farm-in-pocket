@@ -10,8 +10,10 @@ import {
   fetchCellPh,
   fetchCellRecords,
   fetchPlanting,
+  fetchProfile,
   fetchWateringDue,
   fetchWateringSettings,
+  fetchWeather,
   listGrids,
   putCell,
   recordNutrient,
@@ -22,6 +24,7 @@ import {
   setWateringInterval,
   updateGrid,
   updatePlanting,
+  updateProfile,
 } from "./grid-api";
 
 type FetchCall = {
@@ -607,5 +610,57 @@ describe("grid-api", () => {
     expect(calledUrl).toContain("on=2026-05-18");
     expect(records).toHaveLength(1);
     expect(records[0]?.plantName).toBe("トマト");
+  });
+
+  // ---- Issue #32: profile / weather ----------------------------------------
+
+  it("fetchProfile は GET /api/profiles/me?pubkey= を叩いて null を許容する", async () => {
+    mockFetch({ profile: null });
+    const p = await fetchProfile("pk");
+    expect(first().url).toBe("/api/profiles/me?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(p).toBeNull();
+  });
+
+  it("updateProfile は PUT /api/profiles/me に pubkey + patch を body で投げる", async () => {
+    mockFetch({
+      ok: true,
+      profile: { pubkey: "pk", displayName: null, region: "石川県金沢市", locale: "ja" },
+    });
+    const r = await updateProfile("pk", { region: "石川県金沢市" });
+    expect(first().url).toBe("/api/profiles/me");
+    expect(first().init?.method).toBe("PUT");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ pubkey: "pk", region: "石川県金沢市" });
+    expect(r.region).toBe("石川県金沢市");
+  });
+
+  it("fetchWeather は GET /api/weather?region=&date= を叩いて record を返す", async () => {
+    mockFetch({
+      record: {
+        region: "石川県金沢市",
+        date: "2026-05-18",
+        tempMax: 22,
+        tempMin: 13,
+        tempAvg: 17.5,
+        weatherCode: "61",
+        sunshineHours: 4.5,
+        fetchedAt: "2026-05-18 03:00:00",
+      },
+    });
+    const r = await fetchWeather("石川県金沢市", "2026-05-18");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(first().url.startsWith("/api/weather?")).toBe(true);
+    expect(first().url).toContain(`region=${encodeURIComponent("石川県金沢市")}`);
+    expect(first().url).toContain("date=2026-05-18");
+    expect(r.record?.weatherCode).toBe("61");
+    expect(r.record?.tempMax).toBe(22);
+  });
+
+  it("fetchWeather は { record: null, error } をそのまま返す（throw しない）", async () => {
+    mockFetch({ record: null, error: "geocoding_failed" });
+    const r = await fetchWeather("存在しない地名", "2026-05-18");
+    expect(r.record).toBeNull();
+    expect(r.error).toBe("geocoding_failed");
   });
 });

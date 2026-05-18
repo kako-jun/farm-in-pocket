@@ -15,3 +15,4 @@ export * from "./mypace";
 export * from "./nostr";
 export * from "./relay";
 export * from "./upload";
+export * from "./weather";
