@@ -115,14 +115,7 @@ function buildCellMap(cells: CellRecord[]): CellMap {
 // "detail" は Issue #15 で追加した CellDetail（履歴 + クイック施肥/農薬）の主画面。
 // "menu" は旧 Phase 1 のメニュー UI で、既存テストが触っているので互換維持のため残す。
 // "seed-product" は Issue #34 で plant を選んだ後の任意ステップ。
-type ModalKind =
-  | "detail"
-  | "menu"
-  | "container"
-  | "soil"
-  | "plant"
-  | "seed-product"
-  | null;
+type ModalKind = "detail" | "menu" | "container" | "soil" | "plant" | "seed-product" | null;
 
 // Issue #26: 経過時間 fade。閾値で「表示/非表示」を切り替えるのではなく、
 // lastFertilizedAt / lastPesticideAt が記録されていれば常にバッジを出し、

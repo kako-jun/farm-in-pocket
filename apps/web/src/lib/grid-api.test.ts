@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGrid,
+  createMaterial,
   createPlanting,
   createSeedProduct,
   deleteCell,
@@ -10,6 +11,7 @@ import {
   fetchCellNutrients,
   fetchCellPh,
   fetchCellRecords,
+  fetchMaterial,
   fetchPlanting,
   fetchProfile,
   fetchSeedProduct,
@@ -18,11 +20,13 @@ import {
   fetchWeather,
   listGrids,
   putCell,
+  recordMaterialUsage,
   recordNutrient,
   recordPesticide,
   recordPh,
   recordSeedProductUsage,
   recordWatering,
+  searchMaterials,
   searchPlants,
   searchSeedProducts,
   setWateringInterval,
@@ -729,5 +733,83 @@ describe("grid-api", () => {
     expect(body).toEqual({ pubkey: "p".repeat(64) });
     expect(r.firstUse).toBe(true);
     expect(r.product.useCount).toBe(1);
+  });
+
+  // ---- materials (Issue #35) ----
+
+  it("searchMaterials は GET /api/materials?q=&category=&subcategory= を叩く", async () => {
+    mockFetch({
+      materials: [{ id: 1, name: "ハイポネックス", brand: "ハイポネックスジャパン" }],
+    });
+    const res = await searchMaterials({
+      q: "ハイポ",
+      category: "fertilizer_liquid",
+      subcategory: "",
+    });
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(first().url.startsWith("/api/materials?")).toBe(true);
+    expect(first().url).toContain(`q=${encodeURIComponent("ハイポ")}`);
+    expect(first().url).toContain("category=fertilizer_liquid");
+    // 空 subcategory はクエリに乗らない
+    expect(first().url).not.toContain("subcategory=");
+    expect(res).toHaveLength(1);
+  });
+
+  it("fetchMaterial は GET /api/materials/:id を叩く", async () => {
+    mockFetch({ material: { id: 7, name: "培養土", category: "soil" } });
+    const m = await fetchMaterial(7);
+    expect(first().url).toBe("/api/materials/7");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(m.id).toBe(7);
+  });
+
+  it("createMaterial は POST /api/materials に body を JSON で投げる", async () => {
+    mockFetch({
+      material: {
+        id: 55,
+        name: "オルトラン",
+        brand: "住友化学園芸",
+        category: "pesticide",
+        subcategory: "insecticide",
+      },
+      duplicated: false,
+    });
+    const r = await createMaterial({
+      pubkey: "p".repeat(64),
+      name: "オルトラン",
+      brand: "住友化学園芸",
+      category: "pesticide",
+      subcategory: "insecticide",
+      description: "粒剤",
+      affiliateLinks: [{ shop: "Amazon", url: "https://example.com/a" }],
+    });
+    expect(first().url).toBe("/api/materials");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({
+      pubkey: "p".repeat(64),
+      name: "オルトラン",
+      category: "pesticide",
+      subcategory: "insecticide",
+      description: "粒剤",
+    });
+    expect(body.affiliateLinks).toEqual([{ shop: "Amazon", url: "https://example.com/a" }]);
+    expect(r.duplicated).toBe(false);
+    expect(r.material.id).toBe(55);
+  });
+
+  it("recordMaterialUsage は POST /api/materials/:id/use を叩く", async () => {
+    mockFetch({
+      ok: true,
+      firstUse: false,
+      material: { id: 55, name: "オルトラン", useCount: 3, userCount: 1 },
+    });
+    const r = await recordMaterialUsage(55, "p".repeat(64));
+    expect(first().url).toBe("/api/materials/55/use");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "p".repeat(64) });
+    expect(r.firstUse).toBe(false);
+    expect(r.material.useCount).toBe(3);
   });
 });

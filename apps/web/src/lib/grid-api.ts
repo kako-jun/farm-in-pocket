@@ -11,6 +11,9 @@ import type {
   GridEnvironment,
   GridLighting,
   GridRecord,
+  MaterialCategory,
+  MaterialDilution,
+  MaterialRecord,
   NutrientRecord,
   NutrientType,
   PesticideRecord,
@@ -628,4 +631,89 @@ export async function recordSeedProductUsage(
     },
   );
   return { product: data.product, firstUse: data.firstUse };
+}
+
+// ---- materials (Issue #35) -----------------------------------------------
+
+export interface SearchMaterialsParams {
+  q?: string;
+  category?: MaterialCategory;
+  subcategory?: string;
+  limit?: number;
+}
+
+/**
+ * 資材マスター検索。
+ * - q は name/brand 部分一致。
+ * - category / subcategory は完全一致。
+ * - 並びは use_count DESC（人気順）。
+ */
+export async function searchMaterials(params: SearchMaterialsParams): Promise<MaterialRecord[]> {
+  const q = new URLSearchParams();
+  if (params.q && params.q.length > 0) q.set("q", params.q);
+  if (params.category) q.set("category", params.category);
+  if (params.subcategory && params.subcategory.length > 0) q.set("subcategory", params.subcategory);
+  if (typeof params.limit === "number") q.set("limit", String(params.limit));
+  const qs = q.toString();
+  const data = await jsonFetch<{ materials: MaterialRecord[] }>(
+    url(`/api/materials${qs.length > 0 ? `?${qs}` : ""}`),
+  );
+  return data.materials;
+}
+
+export async function fetchMaterial(id: number): Promise<MaterialRecord> {
+  const data = await jsonFetch<{ material: MaterialRecord }>(url(`/api/materials/${id}`));
+  return data.material;
+}
+
+export interface CreateMaterialInput {
+  pubkey: string;
+  name: string;
+  brand?: string | null;
+  category: MaterialCategory;
+  subcategory?: string | null;
+  targetTags?: string[] | null;
+  tags?: string[] | null;
+  dilution?: MaterialDilution | null;
+  description?: string | null;
+  thumbnailUrl?: string | null;
+  affiliateLinks?: SeedProductAffiliateLink[] | null;
+}
+
+export interface CreateMaterialResult {
+  material: MaterialRecord;
+  /** 既存 (brand, name, category) と重複していた場合 true。新規 INSERT なら false。 */
+  duplicated: boolean;
+}
+
+/**
+ * 資材マスターに新規登録する。
+ * - 認証は pubkey の hex64 形式チェックのみ（コミュニティ参加型）。
+ * - (brand, name, category) が既存と重複したら、既存レコードを返す（duplicated=true）。
+ */
+export async function createMaterial(input: CreateMaterialInput): Promise<CreateMaterialResult> {
+  return jsonFetch<CreateMaterialResult>(url("/api/materials"), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * 資材マスターの利用カウントを加算する。
+ * - use_count は毎回 +1。
+ * - user_count は同一 pubkey での初回利用のみ +1。
+ * - fire-and-forget で呼んで良い（戻り値は無視可）。
+ */
+export async function recordMaterialUsage(
+  id: number,
+  pubkey: string,
+): Promise<{ material: MaterialRecord; firstUse: boolean }> {
+  const data = await jsonFetch<{ ok: boolean; material: MaterialRecord; firstUse: boolean }>(
+    url(`/api/materials/${id}/use`),
+    {
+      method: "POST",
+      body: JSON.stringify({ pubkey }),
+    },
+  );
+  return { material: data.material, firstUse: data.firstUse };
 }
