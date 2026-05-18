@@ -16,6 +16,7 @@ import type {
   PesticideRecord,
   PesticideType,
   PlantSummary,
+  RotationWarning,
   SoilType,
 } from "@farm-in-pocket/shared";
 
@@ -152,6 +153,14 @@ export interface CreatePlantingInput {
   seedingDate?: string | null;
   plantingDate?: string | null;
   note?: string | null;
+  /**
+   * Issue #23: 連作障害警告。
+   * - `false`（既定）: 警告条件が成立すれば planting は作らず警告だけ返す。
+   * - `true`: 警告条件が成立しても作る（"分かった上で植える"）。
+   * - 未指定: API 側で `true` 扱い（旧クライアント互換）。
+   *   新しいクライアントは「初回 false → 警告なら確認 → 再度 true」のフローで呼ぶ。
+   */
+  confirmRotation?: boolean;
 }
 
 export interface PlantingCreated {
@@ -163,21 +172,43 @@ export interface PlantingCreated {
   note: string | null;
 }
 
+/**
+ * Issue #23: `createPlanting` の結果型。
+ * - `planted: true` … planting が作成された。`rotationWarning` は警告を出した上で進めた場合のみ付与。
+ * - `planted: false` … 連作警告が出て、`confirmRotation: false` で問い合わせていたため作成を保留した。
+ *   呼び出し側は `rotationWarning` を見て確認ダイアログを出し、ユーザーが OK したら `confirmRotation: true` で再 POST する。
+ */
+export type CreatePlantingResult =
+  | { planted: true; planting: PlantingCreated; rotationWarning?: RotationWarning }
+  | { planted: false; rotationWarning: RotationWarning };
+
 export async function createPlanting(
   gridId: string,
   pubkey: string,
   x: number,
   y: number,
   input: CreatePlantingInput,
-): Promise<PlantingCreated> {
-  const data = await jsonFetch<{ planting: PlantingCreated }>(
-    url(`/api/grids/${gridId}/cells/${x}/${y}/plantings`),
-    {
-      method: "POST",
-      body: JSON.stringify({ ...input, pubkey }),
-    },
-  );
-  return data.planting;
+): Promise<CreatePlantingResult> {
+  const data = await jsonFetch<{
+    ok?: boolean;
+    error?: string;
+    planting?: PlantingCreated;
+    rotationWarning?: RotationWarning;
+  }>(url(`/api/grids/${gridId}/cells/${x}/${y}/plantings`), {
+    method: "POST",
+    body: JSON.stringify({ ...input, pubkey }),
+  });
+  if (data.ok === false && data.error === "rotation_warning" && data.rotationWarning) {
+    return { planted: false, rotationWarning: data.rotationWarning };
+  }
+  if (!data.planting) {
+    throw new Error("createPlanting: planting missing in response");
+  }
+  return {
+    planted: true,
+    planting: data.planting,
+    ...(data.rotationWarning ? { rotationWarning: data.rotationWarning } : {}),
+  };
 }
 
 export async function deletePlanting(id: number, pubkey: string): Promise<void> {

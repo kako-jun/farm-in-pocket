@@ -146,6 +146,20 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
   - 新しい planting を植えると、前 planting の crop_history は `ended_at = date('now')` で閉じられ、新規行が INSERT されます。
   - `DELETE /api/plantings/:id` は planting 自体は物理削除しますが、**crop_history は残します**（座標の連作判断材料として必要）。`ended_at` だけ `date('now')` で埋めます。
   - グリッドの `size_x` / `size_y` を変えると「過去の連作履歴との対応がリセットされます」の確認ダイアログが出ます。座標が変わるため履歴の意味が崩れるからです。
+- **連作障害警告**（Issue #23）。新しい planting を作るとき、同じ座標 (grid_id, x, y) の `crop_history` に**同じ科**の最新行があれば、推奨待機年数と比較して警告を出します。
+  - 推奨待機年数の参考値（`packages/shared/src/farm.ts` の `ROTATION_WAIT_YEARS`）:
+    - ナス科: 4 年（トマト / なす / ピーマン / じゃがいも）
+    - ウリ科: 3 年（きゅうり）
+    - アブラナ科: 3 年（大根）
+    - マメ科: 3 年
+    - キク科: 2 年
+    - セリ科: 2 年
+    - ヒルガオ科: 2 年（さつまいも）
+    - ヒガンバナ科: 2 年（ねぎ）
+    - その他: 1 年
+  - **警告はブロックではなく確認**です。「このセルでは N 年前にナス科のトマトを植えています。連作障害を避けるため、ナス科の植え付けは 4 年空けるのが理想です。それでも植えますか？」のダイアログで OK / キャンセルを選びます。
+  - クライアントは初回 `POST /api/grids/:gridId/cells/:x/:y/plantings` を `confirmRotation: false` で送り、警告が返れば確認ダイアログを出し、ユーザーが OK したら `confirmRotation: true` で再送します（"分かった上で植える"）。
+  - 旧クライアント（`confirmRotation` 未送信）は **既定で `true` 扱い**となり、警告は出さず作成だけ進めるため後方互換を壊しません。
 - **セル詳細・施肥/農薬の記録**（Issue #15）。セルをタップすると詳細モーダルが開き、容器/用土・現在の作物・直近 10 件ずつの履歴・過去の連作履歴（直近 10 件）を確認でき、「🍃 施肥」「🛡️ 農薬」ボタンで小フォームから種別・量・メモを記録できる（POST `/api/grids/:gridId/cells/:x/:y/{nutrient,pesticide}`）。
   - 「💧 水やり」は plantings の watering_settings 統合になるため別 Issue で実装予定。
   - **施肥バッジ**: 直近 30 日以内に施肥していたら右下に緑の点（`●` + 日数）。

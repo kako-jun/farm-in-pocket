@@ -513,4 +513,175 @@ describe("GridEditor", () => {
     // 室内専用の board_mounted は出ない（屋外リストには無い）
     expect(screen.queryByTestId("fip-cell-container-board_mounted")).not.toBeInTheDocument();
   });
+
+  // -------------------------------------------------------------------------
+  // Issue #23: 連作障害警告ダイアログ
+  // -------------------------------------------------------------------------
+
+  // 共通ルート: 1x1 グリッド 1 個と空の履歴 / 検索結果（トマト 1 件）。
+  function seedRotationFixtures(): void {
+    seedSecretKey();
+    routes.push({
+      match: (u) => u.includes("/api/grids?pubkey="),
+      response: {
+        grids: [
+          {
+            id: "g1",
+            userPubkey: "x".repeat(64),
+            name: "畑",
+            environment: "outdoor_sunny",
+            lighting: null,
+            sizeX: 1,
+            sizeY: 1,
+            sortOrder: 0,
+            cells: [],
+          },
+        ],
+      },
+    });
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/history/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
+    });
+    // PlantPicker の検索結果（初回 q=""）
+    routes.push({
+      match: (u, i) => /\/api\/plants\?q=/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        plants: [{ id: 10, name: "トマト", nameEn: "Tomato", family: "ナス科" }],
+      },
+    });
+  }
+
+  it("Issue #23: 連作警告が出たらダイアログを表示し、OK で confirmRotation: true で再 POST する", async () => {
+    seedRotationFixtures();
+    let postCount = 0;
+    routes.push({
+      match: (u, i) => /\/cells\/0\/0\/plantings$/.test(u) && i?.method === "POST",
+      response: undefined,
+      status: 200,
+    });
+    // 動的に分岐させたいので fetch をラップし直す
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (/\/cells\/0\/0\/plantings$/.test(url) && method === "POST") {
+        postCount += 1;
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        fetchCalls.push({ url, method, body: typeof init?.body === "string" ? init.body : null });
+        if (body.confirmRotation === false) {
+          // 1 回目: 警告のみ
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: "rotation_warning",
+              rotationWarning: {
+                family: "ナス科",
+                lastPlantedAt: "2024-04-01",
+                lastPlantName: "ピーマン",
+                recommendedWaitYears: 4,
+                yearsElapsed: 2.1,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // 2 回目: 承諾済みで planting 作成成功
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            planting: {
+              id: 99,
+              cellId: 1,
+              plantId: 10,
+              seedingDate: "2026-05-18",
+              plantingDate: null,
+              note: null,
+            },
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
+    // 詳細モーダル → 「作物を植える」で PlantPicker を開く
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
+    // PlantPicker で「トマト」を選ぶ
+    await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    // 警告ダイアログが出る
+    const dialog = await screen.findByTestId("fip-rotation-confirm");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId("fip-rotation-confirm-message").textContent).toContain("ナス科");
+    expect(screen.getByTestId("fip-rotation-confirm-message").textContent).toContain("ピーマン");
+    expect(screen.getByTestId("fip-rotation-confirm-message").textContent).toContain("4年");
+    // OK 押下 → 2 回目 POST が confirmRotation: true で飛ぶ
+    await user.click(screen.getByTestId("fip-rotation-confirm-ok"));
+    await waitFor(() => {
+      expect(postCount).toBe(2);
+    });
+    const secondPost = fetchCalls.filter(
+      (c) => c.method === "POST" && /\/cells\/0\/0\/plantings$/.test(c.url),
+    )[1];
+    expect(secondPost).toBeDefined();
+    const body = JSON.parse(secondPost?.body ?? "{}");
+    expect(body.confirmRotation).toBe(true);
+    // ダイアログは閉じる
+    await waitFor(() => {
+      expect(screen.queryByTestId("fip-rotation-confirm")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Issue #23: 連作警告ダイアログで「キャンセル」を押すと再 POST されずダイアログだけ閉じる", async () => {
+    seedRotationFixtures();
+    let postCount = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (/\/cells\/0\/0\/plantings$/.test(url) && method === "POST") {
+        postCount += 1;
+        fetchCalls.push({ url, method, body: typeof init?.body === "string" ? init.body : null });
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "rotation_warning",
+            rotationWarning: {
+              family: "ナス科",
+              lastPlantedAt: "2024-04-01",
+              lastPlantName: "ピーマン",
+              recommendedWaitYears: 4,
+              yearsElapsed: 2.1,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
+    await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    await screen.findByTestId("fip-rotation-confirm");
+    expect(postCount).toBe(1);
+    await user.click(screen.getByTestId("fip-rotation-confirm-cancel"));
+    // ダイアログは閉じる
+    await waitFor(() => {
+      expect(screen.queryByTestId("fip-rotation-confirm")).not.toBeInTheDocument();
+    });
+    // 再 POST されない
+    expect(postCount).toBe(1);
+  });
 });
