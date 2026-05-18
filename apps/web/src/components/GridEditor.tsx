@@ -153,11 +153,22 @@ export default function GridEditor(): JSX.Element {
   // サイズ変更確認
   const [resizeConfirm, setResizeConfirm] = useState<{ sizeX: number; sizeY: number } | null>(null);
 
+  // タブ DOM 参照: activeId が変わったときに横スクロールで中央寄せ
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
   useEffect(() => {
     const kp = getMyKeyPair();
     setPubkey(kp?.pubkey ?? null);
     setPubkeyChecked(true);
   }, []);
+
+  // アクティブタブが画面外にあれば視野に入れる
+  // happy-dom など jsdom 互換で scrollIntoView が未定義のケースに備えてオプショナル呼び出し
+  useEffect(() => {
+    if (activeId == null) return;
+    const el = tabRefs.current[activeId];
+    el?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [activeId]);
 
   const reload = useCallback(async (pk: string) => {
     setLoading(true);
@@ -278,6 +289,10 @@ export default function GridEditor(): JSX.Element {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "reorder failed");
+      // 片方失敗時はサーバーから再取得して UI と整合させる
+      // (Promise.all で片方だけ成功すると sortOrder が部分適用された状態になり、
+      //  ローカルの楽観更新では復元できないため強制再同期する)
+      void reload(pubkey);
     }
   };
 
@@ -523,6 +538,9 @@ export default function GridEditor(): JSX.Element {
             return (
               <button
                 key={g.id}
+                ref={(el) => {
+                  tabRefs.current[g.id] = el;
+                }}
                 type="button"
                 data-testid={`fip-grid-tab-${g.id}`}
                 data-active={isActive ? "1" : undefined}

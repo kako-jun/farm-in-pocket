@@ -425,6 +425,15 @@ describe("GridEditor", () => {
     expect(screen.getByTestId("fip-grid-tab-g99")).toBeInTheDocument();
     expect(screen.getByTestId("fip-grid-tab-g99").getAttribute("data-active")).toBe("1");
     expect(localStorage.getItem("fip:active-grid-id-v1")).toBe("g99");
+
+    // POST /api/grids のリクエスト body が想定値で送られていること
+    const post = fetchCalls.find((c) => c.method === "POST" && c.url.endsWith("/api/grids"));
+    expect(post).toBeDefined();
+    const body = JSON.parse(post?.body ?? "{}");
+    expect(body.name).toBe("追加畑");
+    expect(body.environment).toBeDefined();
+    expect(body.sizeX).toBe(5);
+    expect(body.sizeY).toBe(5);
   });
 
   it("『容器を選ぶ』モーダルでは屋外用の容器一覧が出る（屋外環境）", async () => {
