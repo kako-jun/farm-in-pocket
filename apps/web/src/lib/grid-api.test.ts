@@ -9,6 +9,7 @@ import {
   fetchCellNutrients,
   fetchCellPh,
   fetchCellRecords,
+  fetchPlanting,
   listGrids,
   putCell,
   recordNutrient,
@@ -16,6 +17,7 @@ import {
   recordPh,
   searchPlants,
   updateGrid,
+  updatePlanting,
 } from "./grid-api";
 
 type FetchCall = {
@@ -207,6 +209,106 @@ describe("grid-api", () => {
     await deletePlanting(42, "pk");
     expect(first().url).toBe("/api/plantings/42?pubkey=pk");
     expect(first().init?.method).toBe("DELETE");
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #29: 作物ライフサイクル状態管理
+  // -------------------------------------------------------------------------
+
+  it("fetchPlanting は GET /api/plantings/:id?pubkey= を叩く", async () => {
+    mockFetch({
+      planting: {
+        id: 7,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: null,
+        state: "planted",
+        seedingDate: "2026-05-01",
+        germinationDate: null,
+        plantingDate: null,
+        endDate: null,
+        endTag: null,
+        seedingDepthCm: null,
+        plantSpacingCm: null,
+        rowSpacingCm: null,
+        failureMemo: null,
+        note: null,
+      },
+    });
+    const p = await fetchPlanting(7, "pk");
+    expect(first().url).toBe("/api/plantings/7?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(p.id).toBe(7);
+    expect(p.state).toBe("planted");
+  });
+
+  it("updatePlanting は PATCH /api/plantings/:id に body を JSON で投げる（pubkey 添付）", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 7,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: null,
+        state: "growing",
+        seedingDate: "2026-05-01",
+        germinationDate: null,
+        plantingDate: null,
+        endDate: null,
+        endTag: null,
+        seedingDepthCm: null,
+        plantSpacingCm: null,
+        rowSpacingCm: null,
+        failureMemo: null,
+        note: null,
+      },
+    });
+    const result = await updatePlanting(7, "pk", { state: "growing" });
+    expect(first().url).toBe("/api/plantings/7");
+    expect(first().init?.method).toBe("PATCH");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ state: "growing", pubkey: "pk" });
+    expect(result.state).toBe("growing");
+  });
+
+  it("updatePlanting は state=ended + endTag + failureMemo を送れる", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 7,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: null,
+        state: "ended",
+        seedingDate: "2026-05-01",
+        germinationDate: null,
+        plantingDate: null,
+        endDate: "2026-08-15",
+        endTag: "fruited",
+        seedingDepthCm: null,
+        plantSpacingCm: null,
+        rowSpacingCm: null,
+        failureMemo: "豊作",
+        note: null,
+      },
+    });
+    const result = await updatePlanting(7, "pk", {
+      state: "ended",
+      endTag: "fruited",
+      endDate: "2026-08-15",
+      failureMemo: "豊作",
+    });
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({
+      state: "ended",
+      endTag: "fruited",
+      endDate: "2026-08-15",
+      failureMemo: "豊作",
+      pubkey: "pk",
+    });
+    expect(result.state).toBe("ended");
+    expect(result.endTag).toBe("fruited");
+    expect(result.endDate).toBe("2026-08-15");
   });
 
   it("API エラー時は Error を throw する", async () => {

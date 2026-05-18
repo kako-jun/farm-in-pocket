@@ -17,6 +17,9 @@ import type {
   PesticideType,
   PhRecord,
   PlantSummary,
+  PlantingEndTag,
+  PlantingRecord,
+  PlantingState,
   RotationWarning,
   SoilType,
 } from "@farm-in-pocket/shared";
@@ -216,6 +219,46 @@ export async function deletePlanting(id: number, pubkey: string): Promise<void> 
   await jsonFetch<{ ok: true }>(url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`), {
     method: "DELETE",
   });
+}
+
+/**
+ * Issue #29: 単一 planting の詳細を取得する。CellDetail の「現在の作物」セクションで
+ * state / end_tag / failure_memo を表示するために使う。
+ */
+export async function fetchPlanting(id: number, pubkey: string): Promise<PlantingRecord> {
+  const data = await jsonFetch<{ planting: PlantingRecord }>(
+    url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.planting;
+}
+
+/**
+ * Issue #29: 作物ライフサイクル状態の更新。
+ * - state="ended" のときは endTag 必須（API 側で 400）。endDate 省略時は API 側で today。
+ * - state="planted"/"growing" に戻すと endTag/endDate/failureMemo は API 側で NULL リセット。
+ */
+export interface UpdatePlantingInput {
+  state?: PlantingState;
+  endTag?: PlantingEndTag | null;
+  endDate?: string | null;
+  failureMemo?: string | null;
+  note?: string | null;
+  plantingDate?: string | null;
+}
+
+export async function updatePlanting(
+  id: number,
+  pubkey: string,
+  patch: UpdatePlantingInput,
+): Promise<PlantingRecord> {
+  const data = await jsonFetch<{ ok: boolean; planting: PlantingRecord }>(
+    url(`/api/plantings/${id}`),
+    {
+      method: "PATCH",
+      body: JSON.stringify({ ...patch, pubkey }),
+    },
+  );
+  return data.planting;
 }
 
 // ---- cell actions (Issue #15) --------------------------------------------

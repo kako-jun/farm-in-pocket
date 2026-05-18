@@ -15,19 +15,30 @@ import type {
   PesticideRecord,
   PesticideType,
   PhRecord,
+  PlantingEndTag,
+  PlantingRecord,
+  PlantingState,
   Season,
   SoilType,
 } from "@farm-in-pocket/shared";
-import { daysSince, fadeOpacity } from "@farm-in-pocket/shared";
+import {
+  PLANTING_END_TAGS,
+  PLANTING_END_TAG_LABELS_JA,
+  PLANTING_STATE_LABELS_JA,
+  daysSince,
+  fadeOpacity,
+} from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import {
   fetchCellHistory,
   fetchCellNutrients,
   fetchCellPh,
   fetchCellRecords,
+  fetchPlanting,
   recordNutrient,
   recordPesticide,
   recordPh,
+  updatePlanting,
 } from "../lib/grid-api";
 import NutrientTimelineChart from "./charts/NutrientTimelineChart";
 import PhTimelineChart from "./charts/PhTimelineChart";
@@ -136,6 +147,11 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const [pesticides, setPesticides] = useState<PesticideRecord[]>([]);
   const [cropHistory, setCropHistory] = useState<CropHistoryRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Issue #29: 現在の planting 詳細（state / end_tag / failure_memo / seeding_date 等）
+  const [planting, setPlanting] = useState<PlantingRecord | null>(null);
+  const [plantingLoading, setPlantingLoading] = useState(true);
+  // 「終了する」モーダル表示フラグ
+  const [endingFormOpen, setEndingFormOpen] = useState(false);
   // Issue #24: pH 測定記録 (measured_at 昇順)
   const [phRecords, setPhRecords] = useState<PhRecord[]>([]);
   const [phLoading, setPhLoading] = useState(true);
@@ -190,6 +206,27 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     }
   }, [grid.id, pubkey, cellX, cellY]);
 
+  // Issue #29: 現在の作物 (cells.current_planting_id) の詳細を取得。
+  // null（作物が植わっていないセル）なら fetch を打たず即 setPlanting(null) で終わる。
+  const reloadPlanting = useCallback(async () => {
+    const pid = cell?.currentPlantingId ?? null;
+    if (pid == null) {
+      setPlanting(null);
+      setPlantingLoading(false);
+      return;
+    }
+    setPlantingLoading(true);
+    try {
+      const p = await fetchPlanting(pid, pubkey);
+      setPlanting(p);
+    } catch (e) {
+      console.warn("fetchPlanting failed", e);
+      setPlanting(null);
+    } finally {
+      setPlantingLoading(false);
+    }
+  }, [cell?.currentPlantingId, pubkey]);
+
   // Issue #25: 養分投入の全件を時系列昇順で取得 (タイムライン用)
   const reloadAllNutrients = useCallback(async () => {
     setAllNutrientsLoading(true);
@@ -210,7 +247,52 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     void reloadCropHistory();
     void reloadPh();
     void reloadAllNutrients();
-  }, [reloadRecords, reloadCropHistory, reloadPh, reloadAllNutrients]);
+    void reloadPlanting();
+  }, [reloadRecords, reloadCropHistory, reloadPh, reloadAllNutrients, reloadPlanting]);
+
+  // Issue #29: state 遷移ハンドラ
+  const handleSetGrowing = async (): Promise<void> => {
+    if (!planting) return;
+    try {
+      const updated = await updatePlanting(planting.id, pubkey, { state: "growing" });
+      setPlanting(updated);
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "state update failed");
+    }
+  };
+
+  const handleSetPlanted = async (): Promise<void> => {
+    if (!planting) return;
+    try {
+      const updated = await updatePlanting(planting.id, pubkey, { state: "planted" });
+      setPlanting(updated);
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "state update failed");
+    }
+  };
+
+  const handleEndPlanting = async (input: {
+    endTag: PlantingEndTag;
+    endDate?: string;
+    failureMemo?: string;
+  }): Promise<void> => {
+    if (!planting) return;
+    try {
+      const updated = await updatePlanting(planting.id, pubkey, {
+        state: "ended",
+        endTag: input.endTag,
+        endDate: input.endDate,
+        failureMemo: input.failureMemo ?? null,
+      });
+      setPlanting(updated);
+      setEndingFormOpen(false);
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "state update failed");
+    }
+  };
 
   const handleNutrientSaved = async (input: {
     nutrientType: NutrientType;
@@ -307,6 +389,32 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
             </span>
           </div>
         </section>
+
+        {/* 現在の作物 (Issue #29: ライフサイクル状態管理) */}
+        {cell?.currentPlantingId != null && (
+          <section
+            data-testid="fip-cell-detail-planting-section"
+            className="space-y-2 rounded border border-emerald-200 bg-emerald-50/40 p-3 text-sm"
+          >
+            <h4 className="text-sm font-semibold text-neutral-700">現在の作物</h4>
+            {plantingLoading ? (
+              <p className="text-xs text-neutral-500">読み込み中…</p>
+            ) : planting ? (
+              <PlantingPanel
+                planting={planting}
+                plantName={plantName}
+                endingFormOpen={endingFormOpen}
+                onSetGrowing={() => void handleSetGrowing()}
+                onSetPlanted={() => void handleSetPlanted()}
+                onOpenEnding={() => setEndingFormOpen(true)}
+                onCancelEnding={() => setEndingFormOpen(false)}
+                onSubmitEnding={handleEndPlanting}
+              />
+            ) : (
+              <p className="text-xs text-neutral-500">作物情報の取得に失敗しました</p>
+            )}
+          </section>
+        )}
 
         {/* 最近の作業 (クイックアクション) */}
         <section className="space-y-2">
@@ -956,6 +1064,228 @@ function PesticideQuickForm(props: {
           style={{ minHeight: 36 }}
         >
           記録する
+        </button>
+        <button
+          type="button"
+          onClick={props.onCancel}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-xs"
+          style={{ minHeight: 36 }}
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 現在の作物 / ライフサイクル状態パネル (Issue #29)
+//   * state バッジ (植え付け / 生育中 / 終了)
+//   * planted → 「生育中にする」/「終了する」
+//   * growing → 「植え付けに戻す」/「終了する」
+//   * ended   → end_tag と failure_memo を表示
+//   * 「終了する」モーダルでは end_tag セレクト + 終了日 + failure_memo を入力
+// ---------------------------------------------------------------------------
+
+const STATE_BADGE_CLASS: Record<PlantingState, string> = {
+  planted: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  growing: "bg-lime-100 text-lime-800 border-lime-300",
+  ended: "bg-neutral-200 text-neutral-700 border-neutral-300",
+};
+
+function PlantingPanel(props: {
+  planting: PlantingRecord;
+  plantName: string | null;
+  endingFormOpen: boolean;
+  onSetGrowing: () => void;
+  onSetPlanted: () => void;
+  onOpenEnding: () => void;
+  onCancelEnding: () => void;
+  onSubmitEnding: (input: {
+    endTag: PlantingEndTag;
+    endDate?: string;
+    failureMemo?: string;
+  }) => void | Promise<void>;
+}): JSX.Element {
+  const {
+    planting,
+    plantName,
+    endingFormOpen,
+    onSetGrowing,
+    onSetPlanted,
+    onOpenEnding,
+    onCancelEnding,
+    onSubmitEnding,
+  } = props;
+  const stateLabel = PLANTING_STATE_LABELS_JA[planting.state];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          data-testid="fip-cell-detail-planting-state-badge"
+          className={`inline-block rounded-full border px-2 py-0.5 text-xs font-semibold ${STATE_BADGE_CLASS[planting.state]}`}
+        >
+          {stateLabel}
+        </span>
+        {plantName && <span className="text-sm font-medium text-emerald-800">🌱 {plantName}</span>}
+      </div>
+
+      {/* 日付情報 */}
+      <ul className="space-y-0.5 text-xs text-neutral-700">
+        {planting.seedingDate && (
+          <li data-testid="fip-cell-detail-planting-seeding-date">
+            種まき: {planting.seedingDate.slice(0, 10)}
+          </li>
+        )}
+        {planting.plantingDate && (
+          <li data-testid="fip-cell-detail-planting-planting-date">
+            植え付け: {planting.plantingDate.slice(0, 10)}
+          </li>
+        )}
+        {planting.state === "ended" && planting.endDate && (
+          <li data-testid="fip-cell-detail-planting-end-date">
+            終了: {planting.endDate.slice(0, 10)}
+          </li>
+        )}
+      </ul>
+
+      {/* 終了済みなら end_tag と failure_memo を出す */}
+      {planting.state === "ended" && (
+        <div
+          data-testid="fip-cell-detail-planting-end-summary"
+          className="rounded border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700"
+        >
+          {planting.endTag && (
+            <p>
+              結果:{" "}
+              <span
+                data-testid="fip-cell-detail-planting-end-tag"
+                className="font-semibold text-neutral-900"
+              >
+                {PLANTING_END_TAG_LABELS_JA[planting.endTag]}
+              </span>
+            </p>
+          )}
+          {planting.failureMemo && (
+            <p data-testid="fip-cell-detail-planting-failure-memo" className="text-neutral-600">
+              メモ: {planting.failureMemo}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* 状態遷移ボタン */}
+      {!endingFormOpen && (
+        <div className="flex flex-wrap gap-2">
+          {planting.state === "planted" && (
+            <button
+              type="button"
+              data-testid="fip-cell-detail-planting-to-growing"
+              onClick={onSetGrowing}
+              className="rounded-lg border border-lime-400 bg-lime-50 px-3 py-2 text-xs text-lime-800 hover:bg-lime-100"
+              style={{ minHeight: 36 }}
+            >
+              生育中にする
+            </button>
+          )}
+          {planting.state === "growing" && (
+            <button
+              type="button"
+              data-testid="fip-cell-detail-planting-to-planted"
+              onClick={onSetPlanted}
+              className="rounded-lg border border-emerald-400 bg-white px-3 py-2 text-xs text-emerald-800 hover:bg-emerald-50"
+              style={{ minHeight: 36 }}
+            >
+              植え付けに戻す
+            </button>
+          )}
+          {planting.state !== "ended" && (
+            <button
+              type="button"
+              data-testid="fip-cell-detail-planting-end-open"
+              onClick={onOpenEnding}
+              className="rounded-lg border border-neutral-400 bg-white px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-100"
+              style={{ minHeight: 36 }}
+            >
+              終了する
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 終了モーダル（インラインフォーム） */}
+      {endingFormOpen && <PlantingEndForm onCancel={onCancelEnding} onSubmit={onSubmitEnding} />}
+    </div>
+  );
+}
+
+function PlantingEndForm(props: {
+  onCancel: () => void;
+  onSubmit: (input: {
+    endTag: PlantingEndTag;
+    endDate?: string;
+    failureMemo?: string;
+  }) => void | Promise<void>;
+}): JSX.Element {
+  const [endTag, setEndTag] = useState<PlantingEndTag>("fruited");
+  const [endDate, setEndDate] = useState(todayYmd());
+  const [failureMemo, setFailureMemo] = useState("");
+  return (
+    <div
+      data-testid="fip-cell-detail-planting-end-form"
+      className="space-y-2 rounded border border-neutral-300 bg-white p-3"
+    >
+      <label className="block text-xs">
+        終了タグ
+        <select
+          data-testid="fip-cell-detail-planting-end-tag-select"
+          value={endTag}
+          onChange={(e) => setEndTag(e.target.value as PlantingEndTag)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        >
+          {PLANTING_END_TAGS.map((tag) => (
+            <option key={tag} value={tag}>
+              {PLANTING_END_TAG_LABELS_JA[tag]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-xs">
+        終了日
+        <input
+          type="date"
+          data-testid="fip-cell-detail-planting-end-date-input"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        />
+      </label>
+      <label className="block text-xs">
+        失敗メモ (任意)
+        <textarea
+          data-testid="fip-cell-detail-planting-failure-memo-input"
+          value={failureMemo}
+          onChange={(e) => setFailureMemo(e.target.value)}
+          rows={2}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        />
+      </label>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="fip-cell-detail-planting-end-submit"
+          onClick={() => {
+            void props.onSubmit({
+              endTag,
+              endDate: endDate || undefined,
+              failureMemo: failureMemo.trim() === "" ? undefined : failureMemo.trim(),
+            });
+          }}
+          className="rounded-lg bg-neutral-700 px-3 py-2 text-xs font-semibold text-white"
+          style={{ minHeight: 36 }}
+        >
+          終了する
         </button>
         <button
           type="button"

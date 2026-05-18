@@ -2,7 +2,7 @@ import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import cellActionsRouter from "./routes/cell-actions";
 import gridsRouter from "./routes/grids";
-import { plantingsCreateRouter, plantingsDeleteRouter } from "./routes/plantings";
+import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
 
 type Bindings = {
@@ -31,6 +31,6 @@ app.route("/api/grids", gridsRouter);
 app.route("/api/grids", plantingsCreateRouter); // POST /api/grids/:gridId/cells/:x/:y/plantings
 app.route("/api/grids", cellActionsRouter); // POST/GET /api/grids/:gridId/cells/:x/:y/{nutrient,pesticide,records}
 app.route("/api/plants", plantsRouter);
-app.route("/api/plantings", plantingsDeleteRouter);
+app.route("/api/plantings", plantingsItemRouter);
 
 export default app;
