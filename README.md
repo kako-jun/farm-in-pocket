@@ -127,6 +127,39 @@ main マージ後、GitHub Actions が以下を実行:
 
 PWA manifest の `theme_color` / `background_color` も同系統（落ち着いた緑 + オフホワイト soil）に揃えています。
 
+## 季節UI
+
+Issue #41 で導入した、月から自動判定する季節テーマです。日本基準（北半球）。
+
+### 月 → 季節 判定
+
+| 月 | 季節 | アクセント色 | 背景グラデ |
+|---|---|---|---|
+| 3, 4, 5 | 🌸 春 | pink-500 (#ec4899) | `#fefcf7 → #ffe9ec` |
+| 6, 7, 8 | ☀️ 夏 | sky-500 (#0ea5e9) | `#fefcf7 → #dbeafe` |
+| 9, 10, 11 | 🍁 秋 | orange-600 (#ea580c) | `#fefcf7 → #fed7aa` |
+| 12, 1, 2 | ❄️ 冬 | indigo-500 (#6366f1) | `#fefcf7 → #e0e7ff` |
+
+正本は `packages/shared/src/season.ts`。判定ロジック (`seasonFromMonth` / `seasonNow`)、テーマ定義 (`seasonTheme`)、旬判定 (`inferSeasonForPlant` / `isSeasonalPlantForNow`) をひとまとめにしています。
+
+### 実装
+
+- `apps/web/src/components/SeasonBootstrap.tsx`（`MainLayout` から `client:load` で常時マウント）が、`document.body` に CSS 変数 (`--fip-body-gradient` / `--fip-accent-color` / `--fip-accent-color-soft`) と `data-fip-season` 属性を当てる。
+- `apps/web/src/styles/global.css` の `body { background: var(--fip-body-gradient, ...) }` が変数を参照する。JS 無効環境ではフォールバック値（従来 soil グラデ）が当たる。
+
+### 旬バッジ
+
+plants.tags（JSON 配列）に「春まき / 春植え / 春先 / 夏野菜 / 夏まき / 夏植え / 秋まき / 秋植え / 秋野菜 / 冬野菜 / 冬まき」のいずれかの文字列が含まれていれば、その作物の季節を推定します。今の季節と一致したら:
+
+- `/plants` の一覧カード右上に `🌸 旬` バッジ
+- `/plants/:id` 詳細ページ冒頭に「今が旬です」バナー
+
+を表示します。
+
+### 季節を強制する（テスト・確認用）
+
+`/settings` ページの「季節UI」セクションから、「自動 / 春 / 夏 / 秋 / 冬」を切替できます。選択は `localStorage` の `fip:season-override-v1` に保存され、`SeasonBootstrap` が拾って即座に反映します（タブ間も `storage` イベントで同期）。
+
 ## マイ畑（グリッド）
 
 `/grid` ページから「マイ畑」を編集できます（Phase 1 / Issue #13, #14）。

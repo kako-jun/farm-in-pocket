@@ -25,8 +25,13 @@
 }
 
 body {
-  /* オフホワイト soil 系のごく薄いグラデ。色味は地味目に。 */
-  background: linear-gradient(180deg, #fefcf7 0%, #f5ede0 100%);
+  /*
+   * Issue #41: 季節UI。
+   * 既定値は従来の soil 系オフホワイトグラデのまま。
+   * SeasonBootstrap が `--fip-body-gradient` を実行時に上書きして、春夏秋冬で色味が変わる。
+   * 環境変数を解決できない（JS 無効）場合でも見た目は従来どおりにフォールバックする。
+   */
+  background: var(--fip-body-gradient, linear-gradient(180deg, #fefcf7 0%, #f5ede0 100%));
   min-height: 100vh;
 }
 

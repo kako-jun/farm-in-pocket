@@ -17,5 +17,6 @@ export * from "./mypace";
 export * from "./nostr";
 export * from "./rankings";
 export * from "./relay";
+export * from "./season";
 export * from "./upload";
 export * from "./weather";

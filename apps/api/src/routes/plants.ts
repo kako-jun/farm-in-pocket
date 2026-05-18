@@ -19,23 +19,14 @@ interface PlantRow {
   name_en: string | null;
   family: string;
   category: string;
+  // Issue #41: 一覧でも旬バッジ判定に使うため tags を載せる。
+  tags: string | null;
 }
 
 interface PlantDetailRow extends PlantRow {
   genus: string | null;
-  tags: string | null;
   description: string | null;
   thumbnail_url: string | null;
-}
-
-function toSummary(row: PlantRow): PlantSummary {
-  return {
-    id: row.id,
-    name: row.name,
-    nameEn: row.name_en,
-    family: row.family,
-    category: row.category,
-  };
 }
 
 function parseTags(raw: string | null): string[] {
@@ -51,11 +42,23 @@ function parseTags(raw: string | null): string[] {
   }
 }
 
-function toDetail(row: PlantDetailRow): PlantDetail {
+function toSummary(row: PlantRow): PlantSummary {
   return {
-    ...toSummary(row),
-    genus: row.genus,
+    id: row.id,
+    name: row.name,
+    nameEn: row.name_en,
+    family: row.family,
+    category: row.category,
     tags: parseTags(row.tags),
+  };
+}
+
+function toDetail(row: PlantDetailRow): PlantDetail {
+  const summary = toSummary(row);
+  return {
+    ...summary,
+    tags: summary.tags ?? [],
+    genus: row.genus,
     description: row.description,
     thumbnailUrl: row.thumbnail_url,
   };
@@ -118,7 +121,8 @@ app.get("/", async (c) => {
     }
   }
 
-  const sql = `SELECT id, name, name_en, family, category FROM plants${
+  // Issue #41: tags も SELECT に含める（旬バッジ判定で使う）。
+  const sql = `SELECT id, name, name_en, family, category, tags FROM plants${
     where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
   } ${orderBy} LIMIT ${limit}`;
   const result = await c.env.DB.prepare(sql)
