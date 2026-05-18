@@ -272,15 +272,61 @@ describe("RecordForm", () => {
     ).toBe("true");
   });
 
-  it("写真添付ボタンは disabled（#17 で実装）", async () => {
+  it("PhotoPicker が描画され、初期は写真 0/4 で追加ボタンが押せる", async () => {
     seedKey();
     routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });
     render(<RecordForm />);
     await waitFor(() => {
       expect(screen.getByTestId("fip-record-form")).toBeInTheDocument();
     });
-    const btn = screen.getByTestId("fip-record-form-attach-photo") as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-    expect(btn.title).toContain("#17");
+    expect(screen.getByTestId("fip-photo-picker")).toBeInTheDocument();
+    const add = screen.getByTestId("fip-photo-picker-add") as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.textContent).toContain("0/4");
+  });
+
+  it("既存 draft の imageUrls がフォームに復元され、投稿時に event tags に乗る", async () => {
+    seedKey();
+    routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });
+    routes.push({
+      match: (u, i) => /\/api\/publish$/.test(u) && i?.method === "POST",
+      response: { success: true },
+    });
+
+    const imgUrl = "https://image.nostr.build/abc.png";
+    const draft = {
+      id: "draft-img",
+      action: "harvest" as const,
+      content: "写真付き投稿",
+      gridId: null,
+      cellX: null,
+      cellY: null,
+      cropName: null,
+      imageUrls: [imgUrl],
+      createdAt: 1_700_000_000,
+    };
+    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify([draft]));
+
+    const user = userEvent.setup();
+    render(<RecordForm />);
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-record-form-draft-draft-img")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("fip-record-form-draft-edit-draft-img"));
+    // サムネが復元される
+    expect(screen.getByTestId(`fip-photo-picker-thumb-${imgUrl}`)).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("fip-record-form-submit"));
+
+    await waitFor(() => {
+      const post = fetchCalls.find((c) => c.method === "POST" && /\/api\/publish$/.test(c.url));
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}") as {
+        event: { tags: string[][] };
+      };
+      // farm-events.ts は image URL を ["image", url] タグで書く
+      expect(body.event.tags).toContainEqual(["image", imgUrl]);
+    });
   });
 });

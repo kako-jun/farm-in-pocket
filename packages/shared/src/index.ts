@@ -10,3 +10,4 @@ export * from "./farm";
 export * from "./farm-events";
 export * from "./mypace";
 export * from "./nostr";
+export * from "./upload";

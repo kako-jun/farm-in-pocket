@@ -24,6 +24,7 @@ import { addDraft, loadDrafts, newDraftId, removeDraft } from "../lib/drafts";
 import { listGrids } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
 import { createMypaceClient } from "../lib/mypace";
+import PhotoPicker from "./PhotoPicker";
 
 type Status =
   | { kind: "idle" }
@@ -39,6 +40,7 @@ interface FormState {
   cellY: number | null;
   cropName: string;
   content: string;
+  imageUrls: string[];
 }
 
 function emptyForm(): FormState {
@@ -50,6 +52,7 @@ function emptyForm(): FormState {
     cellY: null,
     cropName: "",
     content: "",
+    imageUrls: [],
   };
 }
 
@@ -156,7 +159,7 @@ export default function RecordForm(): JSX.Element {
     cellX: form.cellX,
     cellY: form.cellY,
     cropName: form.cropName.length > 0 ? form.cropName : null,
-    imageUrls: [],
+    imageUrls: form.imageUrls,
     createdAt,
   });
 
@@ -201,7 +204,7 @@ export default function RecordForm(): JSX.Element {
         cellX: form.cellX,
         cellY: form.cellY,
         cropName: draftForFallback.cropName,
-        imageUrls: [],
+        imageUrls: form.imageUrls,
         createdAt: now,
       });
       const signed = signEvent(draftEvent, kp.secretKey);
@@ -239,6 +242,7 @@ export default function RecordForm(): JSX.Element {
       cellY: d.cellY,
       cropName: d.cropName ?? "",
       content: d.content,
+      imageUrls: d.imageUrls,
     });
     setStatus({ kind: "info", message: "下書きを編集中です。投稿で送信、削除で破棄できます。" });
   };
@@ -373,18 +377,14 @@ export default function RecordForm(): JSX.Element {
         </div>
       </section>
 
-      {/* 写真添付プレースホルダ（#17 で実装） */}
+      {/* 写真添付（最大 4 枚、nostr.build にアップロード） */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-neutral-700">写真</h2>
-        <button
-          type="button"
-          data-testid="fip-record-form-attach-photo"
-          disabled
-          title="#17 で実装予定"
-          className="rounded border border-neutral-300 bg-neutral-100 px-3 py-2 text-sm text-neutral-500 cursor-not-allowed"
-        >
-          📷 写真を添付（#17 で実装予定）
-        </button>
+        <PhotoPicker
+          urls={form.imageUrls}
+          onChange={(next) => setForm((f) => ({ ...f, imageUrls: next }))}
+          disabled={submitting}
+        />
       </section>
 
       {/* アクション */}
