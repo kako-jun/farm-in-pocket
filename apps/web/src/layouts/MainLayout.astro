@@ -14,6 +14,7 @@
 // ここでは body 直下に <slot /> を置くだけにする。背景は body 側でグラデを当てる。
 
 import BottomNav from "../components/BottomNav.astro";
+import KeifunMascot from "../components/keifun/KeifunMascot";
 import "../styles/global.css";
 
 export interface Props {
@@ -35,6 +36,11 @@ const { title, description } = Astro.props;
   </head>
   <body class="text-neutral-900">
     <slot />
+    {/* Issue #21: けいふんくんマスコット。Phase 1 は idle 文言の雛形のみ。
+        ボトムナビ (z-40) より下の z-30 で右下に置く。
+        ページごとの trigger（grid_created / record_posted 等）は後続 Issue で
+        各ページから個別に <KeifunMascot kind="..." /> を呼んで上書きする。 */}
+    <KeifunMascot client:idle />
     <BottomNav />
   </body>
 </html>

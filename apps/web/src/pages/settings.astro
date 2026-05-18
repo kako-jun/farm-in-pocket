@@ -1,5 +1,6 @@
 ---
 import AccountSettings from "../components/AccountSettings";
+import KeifunVoiceSettings from "../components/keifun/KeifunVoiceSettings";
 import PrivacySettings from "../components/PrivacySettings";
 import MainLayout from "../layouts/MainLayout.astro";
 
@@ -24,6 +25,14 @@ export const prerender = true;
         初回起動時に表示される注意事項を、いつでも再表示できます。
       </p>
       <PrivacySettings client:load />
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">けいふんくんの読み上げ</h2>
+      <p class="text-sm text-neutral-600">
+        けいふんくんが声に出してメッセージを読み上げます。設定は端末ごとに保存されます。
+      </p>
+      <KeifunVoiceSettings client:load />
     </section>
 
     <section class="space-y-3">

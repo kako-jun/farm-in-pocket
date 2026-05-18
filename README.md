@@ -231,6 +231,60 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 
 並列に問い合わせて、結果を統合します。一部リレーがダウンしていても他で補完できます。
 
+## けいふんくん（マスコット）
+
+Phase 1 で導入したマスコットコンポーネント `KeifunMascot`（Issue #21）です。アイコン + 吹き出し + 音声読み上げ の最小 UI 雛形で、Phase 2 以降の LLM 連携（「けいふんくんに聞く」）の入口になります。
+
+### 3 表情
+
+土色の丸顔 + 真上に伸びるチョンマゲ草（新緑の葉 1 枚）の SVG を、目・口・葉の角度で差分化しています。
+
+- `normal` — 通常。目はドット、口は短い横線、葉は真上に伸びる
+- `happy` — 完了系の褒め文言で使用。目は半月、口は笑顔、葉は揺れる
+- `worried` — 失敗・慰めで使用。目は ò ó 風、口は波線、葉は萎れる
+
+### 定型文（8 kind）
+
+Phase 1 は LLM 連携無しの定型文ライブラリ `apps/web/src/components/keifun/messages.ts` です。
+
+| kind            | 用途                                       |
+| --------------- | ------------------------------------------ |
+| `welcome`       | 初回起動／アカウント設定完了後の歓迎       |
+| `grid_created`  | グリッド作成完了                           |
+| `record_posted` | 作業記録投稿完了                           |
+| `follow_done`   | フォロー完了                               |
+| `watering_due`  | 水やり期日通知（Phase 2 で発火、API のみ） |
+| `encourage`     | 失敗・枯れた報告への慰め                   |
+| `tip`           | 育てるコツ・雑学                           |
+| `idle`          | タップなどでただ顔を出す                   |
+
+各 kind に複数候補を持ち、`pickRandom(kind)` でランダムに 1 つ返します。
+
+### 使い方
+
+`MainLayout.astro` から `<KeifunMascot client:idle />` を全ページに撒いています（デフォルト `kind="idle"`、`placement="bottom-right"`）。ページ固有のトリガは後続 Issue で個別に呼び出します。
+
+```tsx
+// 完了通知（投稿カウンタが増えるたびに表示更新）
+<KeifunMascot kind="record_posted" trigger={postCount} />
+
+// インライン埋め込み（fixed しない）
+<KeifunMascot kind="tip" placement="inline" />
+```
+
+`trigger` 値が変わると文言を再選択して再表示・再読み上げします。8 秒で自動フェードアウトし、吹き出しタップで延長、アイコンクリック / ESC で閉じます。
+
+### TTS（音声読み上げ）
+
+Web Speech API (`SpeechSynthesisUtterance`, lang=ja-JP) を使用します。設定ページ「けいふんくんの読み上げ」セクションでミュート切替とテスト読み上げが可能です。
+
+- ミュート状態は localStorage キー `fip:keifun-mute-v1` (`"true"` / `"false"`) に保存
+- Web Speech API 非対応環境（SSR、一部古いブラウザ）では `supported: false` を返し、speak は no-op
+
+### 将来の LLM 連携
+
+吹き出し下に `disabled` 状態のプロンプト入力欄（`fip-keifun-mascot-prompt-input`）を置いてあります。Phase 2 以降で `kind="llm"` を追加し、ここに入力された文字列をエージェント API に投げる予定です。
+
 ## ディレクトリ構成
 
 ```
