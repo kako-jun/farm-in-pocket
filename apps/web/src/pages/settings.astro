@@ -3,6 +3,7 @@ import AccountSettings from "../components/AccountSettings";
 import KeifunVoiceSettings from "../components/keifun/KeifunVoiceSettings";
 import PrivacySettings from "../components/PrivacySettings";
 import RegionSettings from "../components/RegionSettings";
+import SeasonOverride from "../components/SeasonOverride";
 import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。
@@ -35,6 +36,15 @@ export const prerender = true;
         Open-Meteo から取得して「今日のおせわ」に表示します。
       </p>
       <RegionSettings client:load />
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">季節UI</h2>
+      <p class="text-sm text-neutral-600">
+        画面の背景・アクセントカラーは月から自動判定（3-5月=春、6-8月=夏、9-11月=秋、12-2月=冬）します。
+        ここから任意の季節に強制切替できます（端末ごとに保存）。
+      </p>
+      <SeasonOverride client:load />
     </section>
 
     <section class="space-y-3">

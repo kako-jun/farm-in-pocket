@@ -15,6 +15,7 @@
 
 import BottomNav from "../components/BottomNav.astro";
 import KeifunMascot from "../components/keifun/KeifunMascot";
+import SeasonBootstrap from "../components/SeasonBootstrap";
 import "../styles/global.css";
 
 export interface Props {
@@ -35,6 +36,9 @@ const { title, description } = Astro.props;
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   </head>
   <body class="text-neutral-900">
+    {/* Issue #41: 季節UI。body の CSS 変数を実行時に上書きする副作用専用コンポーネント。
+        client:load で確実に hydration 後すぐ動かす（描画 DOM 無し）。 */}
+    <SeasonBootstrap client:load />
     <slot />
     {/* Issue #21: けいふんくんマスコット。Phase 1 は idle 文言の雛形のみ。
         ボトムナビ (z-40) より下の z-30 で右下に置く。

@@ -8,7 +8,7 @@
 //   将来的には `/api/plants/facets` 的なエンドポイントで動的取得しても良いが、
 //   現状の 121 件規模では UI 操作で十分に絞り込める。
 
-import type { PlantSummary } from "@farm-in-pocket/shared";
+import { type PlantSummary, isSeasonalPlantForNow } from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { type SearchPlantsParams, searchPlantsAdvanced } from "../lib/grid-api";
@@ -158,21 +158,37 @@ export default function PlantsList(): JSX.Element {
       )}
       {status.kind === "ready" && status.plants.length > 0 && (
         <ul data-testid="fip-plants-list-grid" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {status.plants.map((p) => (
-            <li key={p.id}>
-              <a
-                href={`/plants/${p.id}`}
-                data-testid={`fip-plants-list-card-${p.id}`}
-                className="block h-full rounded border border-neutral-200 bg-white p-3 text-sm hover:border-emerald-400 hover:bg-emerald-50"
-              >
-                <div className="font-medium text-neutral-900">{p.name}</div>
-                {p.nameEn && <div className="text-xs text-neutral-500">{p.nameEn}</div>}
-                <div className="mt-1 flex gap-1 text-xs text-neutral-600">
-                  <span>{p.family}</span>
-                </div>
-              </a>
-            </li>
-          ))}
+          {status.plants.map((p) => {
+            // Issue #41: tags から推定した季節と今の季節が一致したら旬バッジを出す。
+            // API レスポンスが古く tags 未指定でも null/undefined 安全に動く。
+            const seasonal = isSeasonalPlantForNow(p.tags ?? []);
+            return (
+              <li key={p.id}>
+                <a
+                  href={`/plants/${p.id}`}
+                  data-testid={`fip-plants-list-card-${p.id}`}
+                  className="block h-full rounded border border-neutral-200 bg-white p-3 text-sm hover:border-emerald-400 hover:bg-emerald-50"
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="font-medium text-neutral-900">{p.name}</div>
+                    {seasonal && (
+                      <span
+                        data-testid={`fip-plants-list-seasonal-${p.id}`}
+                        className="shrink-0 rounded-full border border-emerald-400 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"
+                        title="今が旬の作物です"
+                      >
+                        🌸 旬
+                      </span>
+                    )}
+                  </div>
+                  {p.nameEn && <div className="text-xs text-neutral-500">{p.nameEn}</div>}
+                  <div className="mt-1 flex gap-1 text-xs text-neutral-600">
+                    <span>{p.family}</span>
+                  </div>
+                </a>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

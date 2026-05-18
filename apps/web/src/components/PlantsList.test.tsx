@@ -61,6 +61,42 @@ describe("PlantsList", () => {
     );
   });
 
+  // Issue #41: 季節UI / 旬バッジ
+  it("今の季節と一致する tag を持つ作物には旬バッジ (🌸 旬) が出る", async () => {
+    // PlantsList の debounce (setTimeout 300ms) は実時計で動かしたいので、
+    // shouldAdvanceTime を有効化して Date のみ固定する。
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 3, 10)); // 4月 → spring
+    try {
+      mockSearch.mockResolvedValue([
+        {
+          id: 10,
+          name: "ホウレンソウ",
+          nameEn: "Spinach",
+          family: "ヒユ科",
+          category: "vegetable",
+          tags: ["春まき", "葉物"],
+        },
+        {
+          id: 11,
+          name: "キュウリ",
+          nameEn: "Cucumber",
+          family: "ウリ科",
+          category: "vegetable",
+          tags: ["夏野菜"],
+        },
+      ]);
+      render(<PlantsList />);
+      await waitFor(() => {
+        expect(screen.getByTestId("fip-plants-list-grid")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("fip-plants-list-seasonal-10")).toBeInTheDocument();
+      expect(screen.queryByTestId("fip-plants-list-seasonal-11")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("カテゴリと科の select を変えると params に反映される", async () => {
     mockSearch.mockResolvedValue([]);
     render(<PlantsList />);

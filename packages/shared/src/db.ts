@@ -90,6 +90,12 @@ export interface PlantSummary {
   nameEn: string | null;
   family: string;
   category: string;
+  /**
+   * Issue #41: 季節UI（旬バッジ）のために一覧 API でも tags を返す。
+   * tags は plants.tags（JSON 配列文字列）をパースした結果。空配列もありうる。
+   * 後方互換のため optional にし、未指定（古い API レスポンス等）は `[]` とみなす。
+   */
+  tags?: string[];
 }
 
 /**

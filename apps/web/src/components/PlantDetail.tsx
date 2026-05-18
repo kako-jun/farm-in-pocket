@@ -20,6 +20,7 @@ import {
   type PlantDetail as TPlantDetail,
   encodeNpub,
   hexToBytes,
+  isSeasonalPlantForNow,
 } from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
@@ -181,9 +182,19 @@ export default function PlantDetail(props: PlantDetailProps): JSX.Element {
 
   const plant = detail.plant;
   const categoryLabel = CATEGORY_LABELS[plant.category] ?? plant.category;
+  // Issue #41: tags から推定した季節が今と一致すれば「旬」バナーを冒頭に出す。
+  const seasonal = isSeasonalPlantForNow(plant.tags);
 
   return (
     <div data-testid="fip-plant-detail" className="space-y-5">
+      {seasonal && (
+        <div
+          data-testid="fip-plant-detail-seasonal"
+          className="rounded border border-emerald-400 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+        >
+          🌸 今が旬です。種まき・植え付けに良い季節。
+        </div>
+      )}
       {/* ヘッダ */}
       <section className="space-y-2 rounded border border-neutral-200 bg-white p-4">
         <div className="flex gap-3">
