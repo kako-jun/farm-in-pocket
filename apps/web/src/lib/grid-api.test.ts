@@ -6,11 +6,13 @@ import {
   deleteGrid,
   deletePlanting,
   fetchCellHistory,
+  fetchCellPh,
   fetchCellRecords,
   listGrids,
   putCell,
   recordNutrient,
   recordPesticide,
+  recordPh,
   searchPlants,
   updateGrid,
 } from "./grid-api";
@@ -294,6 +296,54 @@ describe("grid-api", () => {
     expect(first().url).toBe("/api/grids/g1/cells/2/3/history?pubkey=pk");
     expect(first().init?.method ?? "GET").toBe("GET");
     expect(r.records).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #24: pH 測定記録
+  // -------------------------------------------------------------------------
+
+  it("recordPh は POST /api/grids/:id/cells/:x/:y/ph に value/measuredAt/note + pubkey を投げる", async () => {
+    mockFetch({
+      record: {
+        id: 1,
+        cellId: 11,
+        measuredAt: "2026-05-17",
+        value: 6.5,
+        note: "雨上がり",
+      },
+    });
+    const rec = await recordPh("g1", 2, 3, {
+      pubkey: "pk",
+      value: 6.5,
+      measuredAt: "2026-05-17",
+      note: "雨上がり",
+    });
+    expect(first().url).toBe("/api/grids/g1/cells/2/3/ph");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({
+      pubkey: "pk",
+      value: 6.5,
+      measuredAt: "2026-05-17",
+      note: "雨上がり",
+    });
+    expect(rec.value).toBe(6.5);
+    expect(rec.measuredAt).toBe("2026-05-17");
+  });
+
+  it("fetchCellPh は GET /api/grids/:id/cells/:x/:y/ph?pubkey= を叩いて records 配列を返す", async () => {
+    mockFetch({
+      records: [
+        { id: 1, cellId: 11, measuredAt: "2026-04-01", value: 5.5, note: null },
+        { id: 2, cellId: 11, measuredAt: "2026-05-17", value: 6.5, note: null },
+      ],
+    });
+    const records = await fetchCellPh("g1", 2, 3, "pk");
+    expect(first().url).toBe("/api/grids/g1/cells/2/3/ph?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(records).toHaveLength(2);
+    expect(records[0]?.value).toBe(5.5);
+    expect(records[1]?.measuredAt).toBe("2026-05-17");
   });
 
   it("fetchCellHistory は records 配列をそのまま返す", async () => {

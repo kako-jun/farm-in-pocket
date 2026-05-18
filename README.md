@@ -166,6 +166,11 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
   - **農薬バッジ**: 直近 14 日以内に農薬していたら左下に赤の点。
   - 経過時間に応じた fade（古いほど薄くなる演出）は **Phase 2 (#26)** で実装予定。本 Issue では閾値（30日 / 14日）で「出すか出さないか」だけ判定する。
   - 編集アクション（容器を変える / 用土を変える / VOID / クリア / 作物を植える）は詳細モーダル下部の小さなボタン群から委譲される。
+- **pH 測定記録**（Issue #24）。セル詳細モーダルに「土壌 pH」セクションがあり、現在の pH（最新測定値 + 測定日）と「pH 測定を記録」ボタンが並びます。
+  - **入力範囲**: pH 0-14（実用は 3-10 を想定）。範囲外は API 側で 400。`measured_at` 省略時は今日。
+  - **時系列グラフ**: 自前 SVG（外部ライブラリ非依存）で折れ線 + 各点を描画。y 軸は 0-14 固定で 4 / 7 / 10 にガイドライン。x 軸ラベルは最初・中央・最後の最大 3 点。
+  - **古い値はフェード**: グラフの点も、直近 10 件の一覧も、古い測定値ほど薄く表示されます（参考値扱い）。
+  - 関連 API: `POST /api/grids/:gridId/cells/:x/:y/ph`（記録）/ `GET /api/grids/:gridId/cells/:x/:y/ph?pubkey=<hex64>`（時系列昇順で全件）。
 
 データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
 
@@ -189,6 +194,8 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `POST   /api/grids/:gridId/cells/:x/:y/pesticide` — 農薬記録（Issue #15）
 - `GET    /api/grids/:gridId/cells/:x/:y/records?pubkey=<hex64>` — 直近の施肥/農薬を各 10 件返す（Issue #15）
 - `GET    /api/grids/:gridId/cells/:x/:y/history?pubkey=<hex64>` — 座標ベース連作履歴を直近 10 件、時系列降順で返す（Issue #22）
+- `POST   /api/grids/:gridId/cells/:x/:y/ph` — pH 測定値を記録（Issue #24, value: 0-14, measuredAt 省略時は今日）
+- `GET    /api/grids/:gridId/cells/:x/:y/ph?pubkey=<hex64>` — そのセルの pH 測定記録を measured_at 昇順で全件返す（Issue #24）
 
 ## 記録（作業ログの投稿）
 
