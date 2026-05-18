@@ -8,6 +8,7 @@ import type {
   CellRecord,
   ContainerType,
   CropHistoryRecord,
+  DifficultyRecord,
   GridEnvironment,
   GridLighting,
   GridRecord,
@@ -26,6 +27,8 @@ import type {
   PlantingRecord,
   PlantingState,
   ProfileRecord,
+  RankingEntry,
+  RankingSlug,
   RotationWarning,
   SeedProductAffiliateLink,
   SeedProductRecord,
@@ -788,4 +791,83 @@ export async function recordMaterialUsage(
     },
   );
   return { material: data.material, firstUse: data.firstUse };
+}
+
+// ---- rankings (Issue #39) -------------------------------------------------
+
+/**
+ * 運営テーマ別ランキング、または自動算出「植物難易度」を取得する。
+ *
+ * - 投票テーマ slug (`fun-to-grow` 等) は `RankingEntry[]` を返す。
+ * - `auto-difficulty` は `DifficultyRecord[]` を返す。
+ *
+ * 呼び出し側はどちらを期待しているか slug で判別できるため、戻り値はユニオン。
+ */
+export interface FetchRankingResultVote {
+  slug: Exclude<RankingSlug, "auto-difficulty">;
+  entries: RankingEntry[];
+  warning?: string;
+}
+
+export interface FetchRankingResultAuto {
+  slug: "auto-difficulty";
+  entries: DifficultyRecord[];
+}
+
+export type FetchRankingResult = FetchRankingResultVote | FetchRankingResultAuto;
+
+export async function fetchRanking(slug: RankingSlug, limit?: number): Promise<FetchRankingResult> {
+  const q = new URLSearchParams();
+  if (typeof limit === "number") q.set("limit", String(limit));
+  const qs = q.toString();
+  const data = await jsonFetch<{
+    slug: RankingSlug;
+    entries: RankingEntry[] | DifficultyRecord[];
+    warning?: string;
+  }>(url(`/api/rankings/${slug}${qs.length > 0 ? `?${qs}` : ""}`));
+  if (slug === "auto-difficulty") {
+    return { slug: "auto-difficulty", entries: data.entries as DifficultyRecord[] };
+  }
+  return {
+    slug: slug as Exclude<RankingSlug, "auto-difficulty">,
+    entries: data.entries as RankingEntry[],
+    ...(data.warning ? { warning: data.warning } : {}),
+  };
+}
+
+export interface VoteRankingResult {
+  ok: true;
+  slug: RankingSlug;
+  plantId: number;
+  alreadyVoted: boolean;
+  /** Nostalgic 上の score。token 未設定 dev では null */
+  score: number | null;
+}
+
+/**
+ * 指定植物に投票する。同一 (slug, pubkey, plantId) の重複投票は API 側で抑制され、
+ * `alreadyVoted: true` で返る（HTTP 200）。
+ */
+export async function voteRanking(
+  slug: RankingSlug,
+  plantId: number,
+  pubkey: string,
+): Promise<VoteRankingResult> {
+  const data = await jsonFetch<{
+    ok: true;
+    slug: RankingSlug;
+    plantId: number;
+    alreadyVoted: boolean;
+    score?: number | null;
+  }>(url(`/api/rankings/${slug}/vote`), {
+    method: "POST",
+    body: JSON.stringify({ pubkey, plantId }),
+  });
+  return {
+    ok: true,
+    slug: data.slug,
+    plantId: data.plantId,
+    alreadyVoted: data.alreadyVoted,
+    score: data.score ?? null,
+  };
 }

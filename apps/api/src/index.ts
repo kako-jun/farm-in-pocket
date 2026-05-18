@@ -6,6 +6,7 @@ import materialsRouter from "./routes/materials";
 import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
 import profilesRouter from "./routes/profiles";
+import rankingsRouter from "./routes/rankings";
 import retrospectiveRouter from "./routes/retrospective";
 import seedProductsRouter from "./routes/seed-products";
 import { wateringPlantingsRouter, wateringUsersRouter } from "./routes/watering";
@@ -14,6 +15,10 @@ import weatherRouter from "./routes/weather";
 type Bindings = {
   DB: D1Database;
   MYPACE_API_URL: string;
+  /** Issue #39: Nostalgic Ranking owner token (Workers Secret) */
+  NOSTALGIC_TOKEN: string;
+  /** Issue #39: Nostalgic API base override（テスト用、本番は未設定） */
+  NOSTALGIC_API_BASE?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -62,5 +67,9 @@ app.route("/api/seed-products", seedProductsRouter);
 //   /api/materials/:id (GET)
 //   /api/materials/:id/use (POST 利用カウント)
 app.route("/api/materials", materialsRouter);
+// Issue #39: 運営テーマ別ランキング + 自動難易度
+//   /api/rankings/:slug          (GET)
+//   /api/rankings/:slug/vote     (POST)
+app.route("/api/rankings", rankingsRouter);
 
 export default app;

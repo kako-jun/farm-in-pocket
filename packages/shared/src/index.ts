@@ -15,6 +15,7 @@ export * from "./filters";
 export * from "./image";
 export * from "./mypace";
 export * from "./nostr";
+export * from "./rankings";
 export * from "./relay";
 export * from "./upload";
 export * from "./weather";

@@ -14,6 +14,7 @@
 import {
   type NostrProfile,
   type PlantUserRecord,
+  RANKING_VOTABLE_SLUGS,
   SEED_PRODUCT_TYPE_LABELS_JA,
   type SeedProductRecord,
   type PlantDetail as TPlantDetail,
@@ -24,6 +25,7 @@ import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { fetchPlant, fetchPlantSeedProducts, fetchPlantUsers } from "../lib/grid-api";
 import { createMypaceClient } from "../lib/mypace";
+import RankingList from "./RankingList";
 
 interface PlantDetailProps {
   plantId: number;
@@ -282,6 +284,24 @@ export default function PlantDetail(props: PlantDetailProps): JSX.Element {
             ))}
           </ul>
         )}
+      </section>
+
+      {/* ランキング順位（Issue #39） */}
+      <section
+        data-testid="fip-plant-detail-rankings"
+        className="space-y-3 rounded border border-neutral-200 bg-white p-4"
+      >
+        <h3 className="text-sm font-semibold text-neutral-700">ランキング順位</h3>
+        <p className="text-[10px] text-neutral-500">
+          5 種類のテーマ別ランキング + 自動算出の植物難易度。投票ボタンで応援できます（1 植物 1
+          票）。
+        </p>
+        <div className="space-y-4">
+          {RANKING_VOTABLE_SLUGS.map((slug) => (
+            <RankingList key={slug} slug={slug} limit={10} highlightPlantId={plant.id} />
+          ))}
+          <RankingList slug="auto-difficulty" limit={10} highlightPlantId={plant.id} />
+        </div>
       </section>
 
       {/* 育てているユーザー */}

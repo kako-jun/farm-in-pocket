@@ -11,6 +11,9 @@ vi.mock("../lib/grid-api", async () => {
     fetchPlant: vi.fn(),
     fetchPlantSeedProducts: vi.fn(),
     fetchPlantUsers: vi.fn(),
+    // Issue #39: PlantDetail 下部に RankingList が並ぶ。テストでは空配列で安定させる。
+    fetchRanking: vi.fn(async (slug: string) => ({ slug, entries: [] })),
+    voteRanking: vi.fn(),
   };
 });
 
@@ -18,6 +21,10 @@ vi.mock("../lib/mypace", () => ({
   createMypaceClient: vi.fn(() => ({
     getProfiles: vi.fn(async () => ({})),
   })),
+}));
+
+vi.mock("../lib/keys", () => ({
+  getMyKeyPair: vi.fn(() => null),
 }));
 
 import { fetchPlant, fetchPlantSeedProducts, fetchPlantUsers } from "../lib/grid-api";

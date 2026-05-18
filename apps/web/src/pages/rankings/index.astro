@@ -1,0 +1,40 @@
+---
+// Issue: kako-jun/farm-in-pocket#39
+//
+// 全ランキングテーマの目次ページ。
+
+import MainLayout from "../../layouts/MainLayout.astro";
+import { RANKING_LABELS_JA, RANKING_SLUGS } from "@farm-in-pocket/shared";
+
+export const prerender = true;
+---
+
+<MainLayout
+  title="ランキング — Farm in Pocket (ポケ農)"
+  description="ポケ農のテーマ別ランキング。育ててて楽しい作物、初心者向け、ベランダ向け、室内映え、植物難易度（自動算出）。"
+>
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-3xl mx-auto space-y-6">
+    <header>
+      <h1 class="text-2xl font-bold">🏆 ランキング</h1>
+      <p class="text-xs text-neutral-500 mt-1">
+        テーマごとに投票。植物難易度はあなたたちの記録から自動算出されます。
+      </p>
+    </header>
+    <ul class="space-y-2">
+      {RANKING_SLUGS.map((slug) => (
+        <li>
+          <a
+            href={`/rankings/${slug}`}
+            class="block rounded border border-neutral-200 bg-white p-4 hover:bg-emerald-50"
+            data-testid={`fip-rankings-index-link-${slug}`}
+          >
+            <span class="text-sm font-medium text-emerald-700">{RANKING_LABELS_JA[slug]}</span>
+            <span class="ml-2 text-[10px] text-neutral-500">
+              {slug === "auto-difficulty" ? "自動算出" : "ユーザー投票"}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </main>
+</MainLayout>
