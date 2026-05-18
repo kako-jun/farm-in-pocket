@@ -25,6 +25,14 @@ export default function OfflineFlusherBoot(): JSX.Element | null {
       recordWatering: (plantingId, pubkey, wateredAt, note) =>
         recordWatering(plantingId, pubkey, wateredAt, note),
       isOnline: () => (typeof navigator === "undefined" ? true : navigator.onLine !== false),
+      onDrop: (action, attempts) => {
+        // SHOULD-1: 永続失敗で drop した action は console.warn で気付けるようにする。
+        // UI には出さない（バックグラウンドの掃除なのでユーザーに圧をかけたくない）。
+        console.warn(
+          `[offline-flusher] dropping action after ${attempts} attempts: kind=${action.kind}`,
+          action,
+        );
+      },
     });
     return () => {
       handle.stop();

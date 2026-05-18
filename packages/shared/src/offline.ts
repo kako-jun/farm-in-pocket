@@ -14,6 +14,8 @@ export interface OfflineActionPublishEvent {
   event: NostrEvent;
   /** キューに積んだ時刻 (Date.now()). 重複検知や TTL に使う想定 */
   queuedAt: number;
+  /** flusher が fire を試みた回数。閾値超で drop する (SHOULD-1: 4xx 詰まり対策) */
+  attempts?: number;
 }
 
 export interface OfflineActionRecordWatering {
@@ -24,6 +26,8 @@ export interface OfflineActionRecordWatering {
   wateredAt?: string;
   note?: string;
   queuedAt: number;
+  /** flusher が fire を試みた回数。閾値超で drop する (SHOULD-1: 4xx 詰まり対策) */
+  attempts?: number;
 }
 
 export type OfflineAction = OfflineActionPublishEvent | OfflineActionRecordWatering;
@@ -48,6 +52,8 @@ function isNostrEvent(value: unknown): value is NostrEvent {
 export function isOfflineAction(value: unknown): value is OfflineAction {
   if (!isPlainObject(value)) return false;
   if (typeof value.queuedAt !== "number") return false;
+  // attempts は optional だが、あれば number でなければならない
+  if (value.attempts !== undefined && typeof value.attempts !== "number") return false;
   if (value.kind === "publishEvent") {
     return isNostrEvent(value.event);
   }

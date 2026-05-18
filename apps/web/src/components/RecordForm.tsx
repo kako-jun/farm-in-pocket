@@ -28,7 +28,7 @@ import { addDraft, loadDrafts, newDraftId, removeDraft } from "../lib/drafts";
 import { listGrids } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
 import { createMypaceClient } from "../lib/mypace";
-import { pushAction } from "../lib/offline-queue";
+import { pushAction, queueLength, subscribeQueueChanges } from "../lib/offline-queue";
 import PhotoPicker from "./PhotoPicker";
 
 function isCurrentlyOnline(): boolean {
@@ -78,6 +78,8 @@ export default function RecordForm(): JSX.Element {
   const [drafts, setDrafts] = useState<WorkRecordDraft[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [submitting, setSubmitting] = useState(false);
+  // SHOULD-8: オフラインキューに積まれた保留中件数を UI に表示する
+  const [pendingCount, setPendingCount] = useState<number>(0);
 
   useEffect(() => {
     const kp = getMyKeyPair();
@@ -89,6 +91,7 @@ export default function RecordForm(): JSX.Element {
     // getMyKeyPair() の中で encodeNpub() 済み。再エンコードせずに表示に使う。
     setNpub(kp.npub);
     setDrafts(loadDrafts());
+    setPendingCount(queueLength());
 
     // グリッド一覧を取得（失敗してもフォームは出す）
     void listGrids(kp.pubkey)
@@ -96,6 +99,14 @@ export default function RecordForm(): JSX.Element {
       .catch(() => {
         // 取得失敗時は空のまま続行
       });
+  }, []);
+
+  // SHOULD-8: 他タブからのキュー変更を購読して件数を最新化する
+  useEffect(() => {
+    const unsubscribe = subscribeQueueChanges(() => {
+      setPendingCount(queueLength());
+    });
+    return unsubscribe;
   }, []);
 
   const selectedGrid = useMemo<GridRecord | null>(() => {
@@ -227,6 +238,7 @@ export default function RecordForm(): JSX.Element {
     // Issue #42: 圏外時はそのままオフラインキューへ。UI 上は「投稿予約」扱いで成功表示。
     if (!isCurrentlyOnline()) {
       pushAction({ kind: "publishEvent", event: signed, queuedAt: Date.now() });
+      setPendingCount(queueLength()); // SHOULD-8: 楽観 update 後の再カウント
       // 編集中 draft があれば閉じる（提出済み扱い）
       const next = removeDraft(form.draftId);
       setDrafts(next);
@@ -253,6 +265,7 @@ export default function RecordForm(): JSX.Element {
       // Issue #42: ネットワーク失敗時はオフラインキューに退避し、UI は保留扱いに。
       //   さらに編集再開できるよう draft にも残す（編集中の draft = 復元可能、queue = 自動再送）。
       pushAction({ kind: "publishEvent", event: signed, queuedAt: Date.now() });
+      setPendingCount(queueLength()); // SHOULD-8: 楽観 update 後の再カウント
       const next = addDraft(draftForFallback);
       setDrafts(next);
       const detail = err instanceof Error ? err.message : "投稿に失敗しました";
@@ -519,6 +532,17 @@ export default function RecordForm(): JSX.Element {
         >
           {status.message}
         </div>
+      )}
+
+      {/* SHOULD-8: オフラインキュー保留中件数。0 件のときは出さない */}
+      {pendingCount > 0 && (
+        <p
+          data-testid="fip-record-form-pending"
+          data-count={pendingCount}
+          className="text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded px-3 py-2"
+        >
+          保留中 {pendingCount} 件（オンライン復帰時に送信されます）
+        </p>
       )}
 
       {/* 下書き一覧 */}
