@@ -168,6 +168,27 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 
 - `fip:work-record-drafts-v1` — 下書きキュー（最大 100 件、古いものから trim）。
 
+## コミュニティ（みんな）
+
+`/community` ページから「`#farm-in-pocket` を付けて投稿しているユーザー」を一覧できます（Issue #18）。横長バナーカード（バナー + 丸アイコン + 表示名 + 最新作業）をスクロールできるシンプルな一覧で、各カードはタップで `/community/<npub>`（**他人の畑ページ** — 中身は Issue #19 で実装）に遷移します。
+
+### 表示の仕組み
+
+- **投稿は Nostr リレーから直接読む**: ポケ農は `nostr-tools` を使わない方針なので、`packages/shared/src/relay/` に最小の WebSocket クライアント（NIP-01 `REQ` / `EVENT` / `EOSE` / `CLOSE` のみ）を自前実装しています。読み取り専用で、書き込み（投稿）は引き続き mypace API 経由。
+- **プロフィールは mypace から bulk 取得**: 取得した投稿の `pubkey` を集めて `GET /api/profiles?pubkeys=...` で kind:0 メタデータ（`display_name` / `picture` / `banner` 等）をまとめて引きます。失敗しても profile=null で続行します。
+- **dedup**: 同一 `event.id` は最新の `created_at` を残し、同一 `pubkey` は最新投稿 1 件だけ表示します。
+
+### 利用する既定リレー
+
+`packages/shared/src/relay/defaults.ts` に並んでいます。
+
+- `wss://relay.damus.io`
+- `wss://relay.nostr.band`
+- `wss://nos.lol`
+- `wss://relay.snort.social`
+
+並列に問い合わせて、結果を統合します。一部リレーがダウンしていても他で補完できます。
+
 ## ディレクトリ構成
 
 ```
