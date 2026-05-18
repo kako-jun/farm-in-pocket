@@ -18,6 +18,10 @@
 - **ポケ農は `nostr-tools` を依存に持たない**
 - Nostr 鍵管理・relay 接続・event 発行はすべて mypace API 経由
 - ポケ農側は「家庭菜園データの型と UI」に集中する
+- ただし **nsec 生成 / NIP-01 イベント署名 / NIP-19 (nsec/npub) / NIP-98 HTTP 認証** は
+  `@noble/secp256k1` + `@noble/hashes` + `@scure/base` を直接使う最小実装で
+  `packages/shared/src/nostr/` に持つ（mypace API を叩く前段の Authorization ヘッダ生成に必要なため）。
+  relay 接続や複雑な NIP は引き続き mypace 側に丸投げする方針は変えない。
 
 ### モバイルファースト PWA
 

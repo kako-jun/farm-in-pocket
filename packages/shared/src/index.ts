@@ -7,3 +7,4 @@ export const FARM_IN_POCKET_VERSION: FarmInPocketVersion = "0.0.0-phase-0";
 
 export * from "./db";
 export * from "./mypace";
+export * from "./nostr";
