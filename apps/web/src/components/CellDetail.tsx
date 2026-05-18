@@ -8,15 +8,22 @@
 import type {
   CellRecord,
   ContainerType,
+  CropHistoryRecord,
   GridRecord,
   NutrientRecord,
   NutrientType,
   PesticideRecord,
   PesticideType,
+  Season,
   SoilType,
 } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
-import { fetchCellRecords, recordNutrient, recordPesticide } from "../lib/grid-api";
+import {
+  fetchCellHistory,
+  fetchCellRecords,
+  recordNutrient,
+  recordPesticide,
+} from "../lib/grid-api";
 
 const CONTAINER_LABELS: Record<ContainerType, string> = {
   jiue: "地植え",
@@ -58,6 +65,13 @@ const NUTRIENT_LABELS: Record<NutrientType, string> = {
   boron: "ホウ素",
   organic: "有機質肥料",
   other: "その他",
+};
+
+const SEASON_LABELS: Record<Season, string> = {
+  spring: "春",
+  summer: "夏",
+  autumn: "秋",
+  winter: "冬",
 };
 
 const PESTICIDE_LABELS: Record<PesticideType, string> = {
@@ -109,6 +123,8 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [nutrients, setNutrients] = useState<NutrientRecord[]>([]);
   const [pesticides, setPesticides] = useState<PesticideRecord[]>([]);
+  const [cropHistory, setCropHistory] = useState<CropHistoryRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickForm, setQuickForm] = useState<QuickFormKind>(null);
 
@@ -126,9 +142,26 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     }
   }, [grid.id, pubkey, cellX, cellY]);
 
+  // Issue #22: 座標ベース連作履歴を取得。
+  const reloadCropHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const r = await fetchCellHistory(grid.id, cellX, cellY, pubkey);
+      setCropHistory(r.records);
+    } catch (e) {
+      // 履歴取得失敗は致命的でないため error 表示には載せず console に流すのみ
+      // (記録系の error と分離するため別 setError は呼ばない)
+      console.warn("fetchCellHistory failed", e);
+      setCropHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [grid.id, pubkey, cellX, cellY]);
+
   useEffect(() => {
     void reloadRecords();
-  }, [reloadRecords]);
+    void reloadCropHistory();
+  }, [reloadRecords, reloadCropHistory]);
 
   const handleNutrientSaved = async (input: {
     nutrientType: NutrientType;
@@ -267,6 +300,16 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
           )}
         </section>
 
+        {/* 過去履歴（座標ベース連作履歴 / Issue #22） */}
+        <section className="space-y-2">
+          <h4 className="text-sm font-semibold text-neutral-700">過去履歴（直近 10 件）</h4>
+          {historyLoading ? (
+            <p className="text-xs text-neutral-500">読み込み中…</p>
+          ) : (
+            <CropHistoryList records={cropHistory} />
+          )}
+        </section>
+
         {/* 編集アクション（小さめ） */}
         <section className="space-y-2 border-t border-neutral-200 pt-3">
           <h4 className="text-xs font-semibold text-neutral-500">セルの設定を変える</h4>
@@ -380,6 +423,38 @@ function HistoryList(props: {
             📅 {dateStr} 🛡️ 農薬 {PESTICIDE_LABELS[m.rec.pesticideType]}
             {m.rec.dilutionRatio != null && <span> ・ {m.rec.dilutionRatio}倍</span>}
             {m.rec.note && <span className="text-neutral-500"> ・ {m.rec.note}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 過去履歴リスト（Issue #22: 座標ベース連作履歴）
+// ---------------------------------------------------------------------------
+
+function CropHistoryList(props: { records: CropHistoryRecord[] }): JSX.Element {
+  const { records } = props;
+  if (records.length === 0) {
+    return (
+      <p className="text-xs text-neutral-500" data-testid="fip-cell-detail-crop-history-empty">
+        このセルでの過去履歴はまだありません
+      </p>
+    );
+  }
+  return (
+    <ul data-testid="fip-cell-detail-crop-history" className="space-y-1">
+      {records.map((rec) => {
+        const seasonLabel = rec.season ? SEASON_LABELS[rec.season] : "—";
+        return (
+          <li
+            key={`ch-${rec.id}`}
+            data-testid={`fip-cell-detail-crop-history-${rec.id}`}
+            className="rounded border border-amber-100 bg-amber-50/50 px-2 py-1 text-xs"
+          >
+            🌱 {rec.year}年 {seasonLabel} {rec.plantName}（{rec.plantFamily}）
+            {rec.endedAt && <span className="text-neutral-500"> ・ ～{rec.endedAt}</span>}
           </li>
         );
       })}

@@ -7,6 +7,7 @@
 import type {
   CellRecord,
   ContainerType,
+  CropHistoryRecord,
   GridEnvironment,
   GridLighting,
   GridRecord,
@@ -254,5 +255,22 @@ export async function fetchCellRecords(
 ): Promise<CellRecordsResult> {
   return jsonFetch<CellRecordsResult>(
     url(`/api/grids/${gridId}/cells/${x}/${y}/records?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+}
+
+// ---- crop history (Issue #22) --------------------------------------------
+
+export interface CellHistoryResult {
+  records: CropHistoryRecord[];
+}
+
+export async function fetchCellHistory(
+  gridId: string,
+  x: number,
+  y: number,
+  pubkey: string,
+): Promise<CellHistoryResult> {
+  return jsonFetch<CellHistoryResult>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/history?pubkey=${encodeURIComponent(pubkey)}`),
   );
 }

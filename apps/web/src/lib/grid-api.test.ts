@@ -5,6 +5,7 @@ import {
   deleteCell,
   deleteGrid,
   deletePlanting,
+  fetchCellHistory,
   fetchCellRecords,
   listGrids,
   putCell,
@@ -216,5 +217,42 @@ describe("grid-api", () => {
     expect(first().init?.method ?? "GET").toBe("GET");
     expect(r.nutrients).toEqual([]);
     expect(r.pesticides).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #22: 座標ベース連作履歴 (crop_history)
+  // -------------------------------------------------------------------------
+
+  it("fetchCellHistory は GET /api/grids/:id/cells/:x/:y/history?pubkey= を叩く", async () => {
+    mockFetch({ records: [] });
+    const r = await fetchCellHistory("g1", 2, 3, "pk");
+    expect(first().url).toBe("/api/grids/g1/cells/2/3/history?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(r.records).toEqual([]);
+  });
+
+  it("fetchCellHistory は records 配列をそのまま返す", async () => {
+    mockFetch({
+      records: [
+        {
+          id: 1,
+          gridId: "g1",
+          x: 2,
+          y: 3,
+          plantId: 10,
+          plantName: "トマト",
+          plantNameEn: "Tomato",
+          plantFamily: "ナス科",
+          year: 2026,
+          season: "spring",
+          plantedAt: "2026-04-01",
+          endedAt: null,
+        },
+      ],
+    });
+    const r = await fetchCellHistory("g1", 2, 3, "pk");
+    expect(r.records).toHaveLength(1);
+    expect(r.records[0]?.plantFamily).toBe("ナス科");
+    expect(r.records[0]?.season).toBe("spring");
   });
 });
