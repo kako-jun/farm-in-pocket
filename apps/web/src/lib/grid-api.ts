@@ -22,6 +22,9 @@ import type {
   PlantingState,
   ProfileRecord,
   RotationWarning,
+  SeedProductAffiliateLink,
+  SeedProductRecord,
+  SeedProductType,
   SoilType,
   WateringDueRecord,
   WateringSettings,
@@ -158,6 +161,8 @@ export async function searchPlants(q: string): Promise<PlantSummary[]> {
 
 export interface CreatePlantingInput {
   plantId: number;
+  /** Issue #34: 種・苗マスター ID（任意）。指定するとその planting に紐付く。 */
+  seedProductId?: number | null;
   seedingDate?: string | null;
   plantingDate?: string | null;
   note?: string | null;
@@ -175,6 +180,7 @@ export interface PlantingCreated {
   id: number;
   cellId: number;
   plantId: number;
+  seedProductId: number | null;
   seedingDate: string | null;
   plantingDate: string | null;
   note: string | null;
@@ -537,4 +543,89 @@ export interface WeatherFetchResult {
 export async function fetchWeather(region: string, date: string): Promise<WeatherFetchResult> {
   const q = new URLSearchParams({ region, date });
   return jsonFetch<WeatherFetchResult>(url(`/api/weather?${q.toString()}`));
+}
+
+// ---- seed products (Issue #34) -------------------------------------------
+
+export interface SearchSeedProductsParams {
+  q?: string;
+  plantId?: number;
+  type?: SeedProductType;
+  limit?: number;
+}
+
+/**
+ * 種・苗マスター検索。
+ * - q は name/brand 部分一致。
+ * - plantId / type は完全一致。
+ * - 並びは use_count DESC（人気順）。
+ */
+export async function searchSeedProducts(
+  params: SearchSeedProductsParams,
+): Promise<SeedProductRecord[]> {
+  const q = new URLSearchParams();
+  if (params.q && params.q.length > 0) q.set("q", params.q);
+  if (typeof params.plantId === "number") q.set("plantId", String(params.plantId));
+  if (params.type) q.set("type", params.type);
+  if (typeof params.limit === "number") q.set("limit", String(params.limit));
+  const qs = q.toString();
+  const data = await jsonFetch<{ products: SeedProductRecord[] }>(
+    url(`/api/seed-products${qs.length > 0 ? `?${qs}` : ""}`),
+  );
+  return data.products;
+}
+
+export async function fetchSeedProduct(id: number): Promise<SeedProductRecord> {
+  const data = await jsonFetch<{ product: SeedProductRecord }>(url(`/api/seed-products/${id}`));
+  return data.product;
+}
+
+export interface CreateSeedProductInput {
+  pubkey: string;
+  name: string;
+  brand?: string | null;
+  plantId: number;
+  type: SeedProductType;
+  thumbnailUrl?: string | null;
+  affiliateLinks?: SeedProductAffiliateLink[] | null;
+}
+
+export interface CreateSeedProductResult {
+  product: SeedProductRecord;
+  /** 既存 (brand, name, type) と重複していた場合 true。新規 INSERT なら false。 */
+  duplicated: boolean;
+}
+
+/**
+ * 種・苗マスターに新規登録する。
+ * - 認証は現時点で pubkey の hex64 形式チェックのみ（コミュニティ参加型）。
+ * - (brand, name, type) が既存と重複したら、既存レコードを返す（duplicated=true）。
+ */
+export async function createSeedProduct(
+  input: CreateSeedProductInput,
+): Promise<CreateSeedProductResult> {
+  return jsonFetch<CreateSeedProductResult>(url("/api/seed-products"), {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/**
+ * 種・苗マスターの利用カウントを加算する。
+ * - use_count は毎回 +1。
+ * - user_count は同一 pubkey での初回利用のみ +1。
+ * - fire-and-forget で呼んで良い（戻り値は無視可）。
+ */
+export async function recordSeedProductUsage(
+  id: number,
+  pubkey: string,
+): Promise<{ product: SeedProductRecord; firstUse: boolean }> {
+  const data = await jsonFetch<{ ok: boolean; product: SeedProductRecord; firstUse: boolean }>(
+    url(`/api/seed-products/${id}/use`),
+    {
+      method: "POST",
+      body: JSON.stringify({ pubkey }),
+    },
+  );
+  return { product: data.product, firstUse: data.firstUse };
 }

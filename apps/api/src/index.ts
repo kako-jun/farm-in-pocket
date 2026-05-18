@@ -6,6 +6,7 @@ import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
 import profilesRouter from "./routes/profiles";
 import retrospectiveRouter from "./routes/retrospective";
+import seedProductsRouter from "./routes/seed-products";
 import { wateringPlantingsRouter, wateringUsersRouter } from "./routes/watering";
 import weatherRouter from "./routes/weather";
 
@@ -50,5 +51,10 @@ app.route("/api/users", wateringUsersRouter);
 //   /api/weather?region=&date= (GET)
 app.route("/api/profiles", profilesRouter);
 app.route("/api/weather", weatherRouter);
+// Issue #34: 種・苗マスター（コミュニティ参加型）
+//   /api/seed-products (GET 検索 / POST 登録)
+//   /api/seed-products/:id (GET)
+//   /api/seed-products/:id/use (POST 利用カウント)
+app.route("/api/seed-products", seedProductsRouter);
 
 export default app;

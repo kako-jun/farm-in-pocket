@@ -336,3 +336,70 @@ export interface GridRecord {
   sortOrder: number;
   cells: CellRecord[];
 }
+
+// ============================================================================
+// 種・苗マスター DTO (Issue #34)
+//   * type: seed_products.type と一致（seed / seedling / bulb / other）
+//   * affiliateLinks は JSON 文字列で永続化、API レスポンスではパース済み配列で返す。
+//   * useCount は「のべ利用回数」、userCount は「使ったユーザー数（DISTINCT pubkey）」。
+//   * plantName は GET 結果の利便性のため plants から JOIN して埋める。
+// ============================================================================
+
+export type SeedProductType = "seed" | "seedling" | "bulb" | "other";
+
+export const SEED_PRODUCT_TYPES: readonly SeedProductType[] = [
+  "seed",
+  "seedling",
+  "bulb",
+  "other",
+] as const;
+
+export const SEED_PRODUCT_TYPE_LABELS_JA: Record<SeedProductType, string> = {
+  seed: "種",
+  seedling: "苗",
+  bulb: "球根",
+  other: "その他",
+};
+
+export interface SeedProductAffiliateLink {
+  shop: string;
+  url: string;
+}
+
+export interface SeedProductRecord {
+  id: number;
+  name: string;
+  brand: string | null;
+  plantId: number;
+  plantName: string | null;
+  type: SeedProductType;
+  thumbnailUrl: string | null;
+  affiliateLinks: SeedProductAffiliateLink[] | null;
+  useCount: number;
+  userCount: number;
+}
+
+/**
+ * Issue #34: affiliate_links のバリデーション。
+ * - 配列で、各要素が `{ shop: string, url: string }` の形であること。
+ * - URL は http(s) スキームのみ許容（ローカル参照や javascript: を弾く）。
+ * - 空配列も OK（その場合 API では NULL として保存する想定）。
+ */
+export function isValidAffiliateLinks(value: unknown): value is SeedProductAffiliateLink[] {
+  if (!Array.isArray(value)) return false;
+  for (const item of value) {
+    if (!item || typeof item !== "object") return false;
+    const rec = item as { shop?: unknown; url?: unknown };
+    if (typeof rec.shop !== "string" || rec.shop.length === 0) return false;
+    if (typeof rec.url !== "string" || rec.url.length === 0) return false;
+    if (!/^https?:\/\//i.test(rec.url)) return false;
+  }
+  return true;
+}
+
+/**
+ * Issue #34: SeedProductType の文字列検証。
+ */
+export function isValidSeedProductType(value: unknown): value is SeedProductType {
+  return typeof value === "string" && (SEED_PRODUCT_TYPES as readonly string[]).includes(value);
+}

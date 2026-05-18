@@ -111,6 +111,7 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   const body = await c.req.json<{
     pubkey?: unknown;
     plantId?: unknown;
+    seedProductId?: unknown;
     seedingDate?: unknown;
     plantingDate?: unknown;
     note?: unknown;
@@ -132,6 +133,20 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   const seedingDate = typeof body.seedingDate === "string" ? body.seedingDate : null;
   const plantingDate = typeof body.plantingDate === "string" ? body.plantingDate : null;
   const note = typeof body.note === "string" ? body.note : null;
+
+  // Issue #34: seed_product_id（種・苗マスター参照、任意）。
+  // 数値が来たら正整数チェックして紐付ける。invalid なら 400。
+  let seedProductId: number | null = null;
+  if (body.seedProductId !== undefined && body.seedProductId !== null) {
+    if (
+      typeof body.seedProductId !== "number" ||
+      !Number.isInteger(body.seedProductId) ||
+      body.seedProductId <= 0
+    ) {
+      return c.json({ error: "invalid seedProductId" }, 400);
+    }
+    seedProductId = body.seedProductId;
+  }
 
   // Issue #22: crop_history に固定保存するため family を denormalize で取る。
   // Issue #23: 同時に作物名（japanese_name）も先取りする。警告ペイロードに含める旧 plant 名は
@@ -242,10 +257,10 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   }
 
   const insertResult = await c.env.DB.prepare(
-    `INSERT INTO plantings (cell_id, plant_id, seeding_date, planting_date, note)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO plantings (cell_id, plant_id, seed_product_id, seeding_date, planting_date, note)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   )
-    .bind(cell.id, plantId, seedingDate, plantingDate, note)
+    .bind(cell.id, plantId, seedProductId, seedingDate, plantingDate, note)
     .run();
 
   const newId = insertResult.meta.last_row_id;
@@ -273,6 +288,7 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
         id: newId,
         cellId: cell.id,
         plantId,
+        seedProductId,
         seedingDate,
         plantingDate,
         note,
