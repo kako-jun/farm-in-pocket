@@ -4,6 +4,7 @@ import cellActionsRouter from "./routes/cell-actions";
 import gridsRouter from "./routes/grids";
 import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
+import retrospectiveRouter from "./routes/retrospective";
 
 type Bindings = {
   DB: D1Database;
@@ -32,5 +33,7 @@ app.route("/api/grids", plantingsCreateRouter); // POST /api/grids/:gridId/cells
 app.route("/api/grids", cellActionsRouter); // POST/GET /api/grids/:gridId/cells/:x/:y/{nutrient,pesticide,records}
 app.route("/api/plants", plantsRouter);
 app.route("/api/plantings", plantingsItemRouter);
+// Issue #30: 振り返りビュー (カレンダー / 作物別 / グリッド履歴 / 失敗ログ)
+app.route("/api/users", retrospectiveRouter);
 
 export default app;
