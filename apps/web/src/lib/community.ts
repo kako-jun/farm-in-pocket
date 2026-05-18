@@ -95,14 +95,20 @@ export async function fetchFarmInPocketUsers(limit = 50): Promise<FetchCommunity
 
   const pubkeys = [...latestByPubkey.keys()];
 
-  // mypace から profile bulk 取得。失敗しても空オブジェクトで続行する。
+  // mypace から profile bulk 取得。mypace 側ハードリミット 10 件のため chunk して順次叩く。
+  // 失敗チャンクは空のままで続行する（profile=null フォールバック）。
   let profiles: Record<string, NostrProfile> = {};
   if (pubkeys.length > 0) {
-    try {
-      const client = createMypaceClient();
-      profiles = await client.getProfiles(pubkeys);
-    } catch {
-      profiles = {};
+    const client = createMypaceClient();
+    const MYPACE_PROFILES_CHUNK = 10;
+    for (let i = 0; i < pubkeys.length; i += MYPACE_PROFILES_CHUNK) {
+      const chunk = pubkeys.slice(i, i + MYPACE_PROFILES_CHUNK);
+      try {
+        const got = await client.getProfiles(chunk);
+        profiles = { ...profiles, ...got };
+      } catch {
+        // このチャンクは諦めて次へ
+      }
     }
   }
 
