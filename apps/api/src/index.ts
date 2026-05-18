@@ -4,8 +4,10 @@ import cellActionsRouter from "./routes/cell-actions";
 import gridsRouter from "./routes/grids";
 import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
+import profilesRouter from "./routes/profiles";
 import retrospectiveRouter from "./routes/retrospective";
 import { wateringPlantingsRouter, wateringUsersRouter } from "./routes/watering";
+import weatherRouter from "./routes/weather";
 
 type Bindings = {
   DB: D1Database;
@@ -43,5 +45,10 @@ app.route("/api/users", retrospectiveRouter);
 // Issue #31: 「今日水やりすべき」一覧
 //   /api/users/:pubkey/watering-due
 app.route("/api/users", wateringUsersRouter);
+// Issue #32: プロフィール（地域設定）と気象データ取得
+//   /api/profiles/me (GET/PUT)
+//   /api/weather?region=&date= (GET)
+app.route("/api/profiles", profilesRouter);
+app.route("/api/weather", weatherRouter);
 
 export default app;

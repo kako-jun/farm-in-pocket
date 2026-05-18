@@ -207,6 +207,16 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
     - `PUT /api/plantings/:id/watering` — body `{ pubkey, intervalDays }`。`intervalDays=null|0` で DELETE（解除）
     - `POST /api/plantings/:id/water` — body `{ pubkey, wateredAt?, note? }`。settings があれば `last_watered_at` / `next_due_at` を同時更新
     - `GET /api/users/:pubkey/watering-due?pubkey=<hex64>&on=YYYY-MM-DD` — その日に期日を迎える plantings 一覧。`on` 省略時は今日 (UTC)。`state="ended"` は除外
+- **気象データ**（Issue #32）。プロフィールに地域（市区町村レベル）を設定すると、屋外グリッドの作業日に気温・天気・日照時間を **Open-Meteo** から取得して表示します。
+  - **地域設定**: 設定ページの「地域（気象データ用）」セクションで「石川県金沢市」のようにテキスト入力 →「設定する」で `PUT /api/profiles/me` に upsert。
+  - **取得経路**: 初回は Open-Meteo geocoding API で region → (lat, lon) を引き、forecast API で `temperature_2m_max / min / weather_code / sunshine_duration` を取得して `weather_cache` テーブルに INSERT。次回以降は `(region, date) UNIQUE` でキャッシュヒットを優先します。当日は `fetched_at` から 6 時間経過したら再取得を許容、過去日は変わらないので再取得しません。
+  - **「今日のおせわ」の天気バナー**: トップページの「💧 今日のおせわ」上部に「石川県金沢市: ☔ 今日は雨（最高 18℃ / 最低 12℃）」のように表示します。`weather_code` が雨カテゴリ（WMO 51-67 / 80-82 / 95-99）のときは「☔ 屋外グリッドの水やりは不要かもしれません」サジェストを追加表示します。
+  - **室内グリッド除外**: `grid.environment in ('indoor','greenhouse')` のグリッドには気象 UI を出しません（屋内なので天気は関係ない）。`isOutdoorEnvironment()` ヘルパで判定します。
+  - **取得失敗時**: 200 + `{ record: null, error: "geocoding_failed" | "forecast_failed" }` で返し、フロントは「天気を取得できませんでした」を表示するだけで「今日のおせわ」本体には影響させません。
+  - 関連 API:
+    - `GET /api/profiles/me?pubkey=<hex64>` — 自分のプロフィール取得（無ければ `profile: null`）
+    - `PUT /api/profiles/me` — body `{ pubkey, displayName?, region?, locale? }` で upsert
+    - `GET /api/weather?region=<text>&date=YYYY-MM-DD` — `weather_cache` を見て、無ければ Open-Meteo から取得 → INSERT して返却
 
 データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
 

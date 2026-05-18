@@ -126,6 +126,61 @@ describe("WateringDueList", () => {
     expect(screen.getByTestId("fip-watering-due-row-8")).toBeInTheDocument();
   });
 
+  it("region 設定済みなら天気バナーを表示し、雨なら「屋外不要」サジェストを出す (Issue #32)", async () => {
+    routes.push({
+      match: (u) => /\/api\/users\/.+\/watering-due\?/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/api\/profiles\/me\?/.test(u),
+      response: {
+        profile: { pubkey: PUBKEY, displayName: null, region: "石川県金沢市", locale: "ja" },
+      },
+    });
+    routes.push({
+      match: (u) => /\/api\/weather\?/.test(u),
+      response: {
+        record: {
+          region: "石川県金沢市",
+          date: "2026-05-18",
+          tempMax: 18,
+          tempMin: 12,
+          tempAvg: 15,
+          weatherCode: "61", // 雨
+          sunshineHours: 1.2,
+          fetchedAt: "2026-05-18 03:00:00",
+        },
+      },
+    });
+    render(<WateringDueList pubkey={PUBKEY} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-watering-due-weather")).toBeInTheDocument();
+    });
+    const banner = screen.getByTestId("fip-watering-due-weather");
+    expect(banner.textContent).toContain("石川県金沢市");
+    expect(banner.textContent).toContain("雨");
+    expect(screen.getByTestId("fip-watering-due-rain-suggest")).toBeInTheDocument();
+  });
+
+  it("region 未設定なら設定誘導リンクを出す (Issue #32)", async () => {
+    routes.push({
+      match: (u) => /\/api\/users\/.+\/watering-due\?/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/api\/profiles\/me\?/.test(u),
+      response: {
+        profile: { pubkey: PUBKEY, displayName: null, region: null, locale: "ja" },
+      },
+    });
+    render(<WateringDueList pubkey={PUBKEY} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-watering-due-region-prompt")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("fip-watering-due-weather")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fip-watering-due-rain-suggest")).not.toBeInTheDocument();
+  });
+
   it("daysOverdue > 0 の行には「期日超過 N日」赤バッジが表示される", async () => {
     routes.push({
       match: (u) => /\/api\/users\/.+\/watering-due\?/.test(u),
