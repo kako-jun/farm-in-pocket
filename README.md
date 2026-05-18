@@ -171,6 +171,11 @@ PWA manifest の `theme_color` / `background_color` も同系統（落ち着い�
   - **時系列グラフ**: 自前 SVG（外部ライブラリ非依存）で折れ線 + 各点を描画。y 軸は 0-14 固定で 4 / 7 / 10 にガイドライン。x 軸ラベルは最初・中央・最後の最大 3 点。
   - **古い値はフェード**: グラフの点も、直近 10 件の一覧も、古い測定値ほど薄く表示されます（参考値扱い）。
   - 関連 API: `POST /api/grids/:gridId/cells/:x/:y/ph`（記録）/ `GET /api/grids/:gridId/cells/:x/:y/ph?pubkey=<hex64>`（時系列昇順で全件）。
+- **養分タイムライン**（Issue #25）。セル詳細モーダルに「養分タイムライン」セクションがあり、主要養分（窒素 N / リン酸 P / カリ K）の最終投入日サマリの 3 行と、自前 SVG タイムラインチャートが並びます。
+  - **可視化方法**: 量を積み上げる累積グラフではなく、`nutrient_type` ごとに段（縦軸位置）を割り当て、その段に投入イベントを ● サイズ 6px で打つドットマップ。同じ種類の点は薄い線で繋ぐので、「最後にいつ何を入れたか」が一目で分かります。
+  - **色の正本**: `packages/shared/src/farm.ts` の `NUTRIENT_COLORS`（nitrogen=緑 / phosphorus=赤 / potassium=紫 / calcium=黄 / magnesium=水色 / sulfur=橙 / iron=灰 / manganese=ライム / zinc=シアン / boron=薄灰 / organic=土色 / other=濃灰）。
+  - **アクセシビリティ**: 各点に `aria-label="YYYY-MM-DD nutrient_type 量"` と SVG `<title>` を付与。
+  - 関連 API: `GET /api/grids/:gridId/cells/:x/:y/nutrients?pubkey=<hex64>` がそのセルの全 `nutrient_records` を `applied_at` 昇順で返します（既存 `/records` は最新 10 件専用の Phase 1 仕様として残しています）。
 
 データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
 
@@ -193,6 +198,7 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `POST   /api/grids/:gridId/cells/:x/:y/nutrient` — 施肥記録（Issue #15）
 - `POST   /api/grids/:gridId/cells/:x/:y/pesticide` — 農薬記録（Issue #15）
 - `GET    /api/grids/:gridId/cells/:x/:y/records?pubkey=<hex64>` — 直近の施肥/農薬を各 10 件返す（Issue #15）
+- `GET    /api/grids/:gridId/cells/:x/:y/nutrients?pubkey=<hex64>` — そのセルの全 `nutrient_records` を applied_at 昇順で返す（Issue #25, 養分タイムライン用）
 - `GET    /api/grids/:gridId/cells/:x/:y/history?pubkey=<hex64>` — 座標ベース連作履歴を直近 10 件、時系列降順で返す（Issue #22）
 - `POST   /api/grids/:gridId/cells/:x/:y/ph` — pH 測定値を記録（Issue #24, value: 0-14, measuredAt 省略時は今日）
 - `GET    /api/grids/:gridId/cells/:x/:y/ph?pubkey=<hex64>` — そのセルの pH 測定記録を measured_at 昇順で全件返す（Issue #24）

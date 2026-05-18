@@ -4,6 +4,7 @@
 // POST /api/grids/:gridId/cells/:x/:y/nutrient   施肥記録
 // POST /api/grids/:gridId/cells/:x/:y/pesticide  農薬記録
 // GET  /api/grids/:gridId/cells/:x/:y/records    直近 10 件ずつ
+// GET  /api/grids/:gridId/cells/:x/:y/nutrients  全件 (時系列タイムライン用 / #25)
 //
 // セルは事前に PUT /api/grids/:gridId/cells/:x/:y で容器/用土が設定されている前提。
 // 見つからなければ 404 を返す（自動 upsert はしない）。
@@ -436,6 +437,37 @@ app.post("/:gridId/cells/:x/:y/ph", async (c) => {
     .first<PhRow>();
   if (!row) return c.json({ error: "record vanished" }, 500);
   return c.json({ record: toPhRecord(row) }, 201);
+});
+
+// ============================================================================
+// 養分投入の全件時系列取得 (Issue #25)
+//   既存 /records は最新 10 件専用 (Phase 1)。タイムライン表示用に全件を applied_at
+//   昇順で返す専用エンドポイント。
+// ============================================================================
+
+app.get("/:gridId/cells/:x/:y/nutrients", async (c) => {
+  const gridId = c.req.param("gridId");
+  const coords = parseCellCoords(c.req.param("x"), c.req.param("y"));
+  if (!coords.ok) return c.json({ error: coords.error }, 400);
+
+  const auth = await requireGridOwner(c.env.DB, gridId, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
+  const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
+  if (cellId == null) {
+    // セルが無ければ空配列で返す
+    return c.json({ records: [] });
+  }
+
+  const res = await c.env.DB.prepare(
+    `SELECT id, cell_id, applied_at, nutrient_type, material_id, amount, amount_unit, note
+       FROM nutrient_records
+      WHERE cell_id = ?
+      ORDER BY applied_at ASC, id ASC`,
+  )
+    .bind(cellId)
+    .all<NutrientRow>();
+  return c.json({ records: (res.results ?? []).map(toNutrientRecord) });
 });
 
 app.get("/:gridId/cells/:x/:y/ph", async (c) => {
