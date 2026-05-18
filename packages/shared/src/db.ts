@@ -403,3 +403,139 @@ export function isValidAffiliateLinks(value: unknown): value is SeedProductAffil
 export function isValidSeedProductType(value: unknown): value is SeedProductType {
   return typeof value === "string" && (SEED_PRODUCT_TYPES as readonly string[]).includes(value);
 }
+
+// ============================================================================
+// 資材マスター DTO (Issue #35)
+//   * category: soil / fertilizer_solid / fertilizer_liquid / pesticide / tool
+//   * subcategory: category=pesticide のとき insecticide/fungicide/herbicide/repellent/adhesive
+//     その他 category の subcategory は自由文字列（将来拡張）
+//   * targetTags / tags: JSON 配列文字列で永続化、API レスポンスではパース済み配列
+//   * dilution: 希釈倍率定義（液体肥料/農薬向け）。JSON 形式で永続化
+//     `{ unit: "倍液", ratios: [{ purpose: "野菜全般", ratio: 500 }, ...] }`
+//   * affiliateLinks: seed_products と同じ `[{shop, url}]` 形式
+//   * useCount は「のべ利用回数」、userCount は「使ったユーザー数（DISTINCT pubkey）」
+// ============================================================================
+
+export type MaterialCategory =
+  | "soil"
+  | "fertilizer_solid"
+  | "fertilizer_liquid"
+  | "pesticide"
+  | "tool";
+
+export const MATERIAL_CATEGORIES: readonly MaterialCategory[] = [
+  "soil",
+  "fertilizer_solid",
+  "fertilizer_liquid",
+  "pesticide",
+  "tool",
+] as const;
+
+export const MATERIAL_CATEGORY_LABELS_JA: Record<MaterialCategory, string> = {
+  soil: "用土",
+  fertilizer_solid: "肥料（固形）",
+  fertilizer_liquid: "肥料（液体）",
+  pesticide: "農薬",
+  tool: "資材・道具",
+};
+
+export type PesticideSubcategory =
+  | "insecticide"
+  | "fungicide"
+  | "herbicide"
+  | "repellent"
+  | "adhesive";
+
+export const PESTICIDE_SUBCATEGORIES: readonly PesticideSubcategory[] = [
+  "insecticide",
+  "fungicide",
+  "herbicide",
+  "repellent",
+  "adhesive",
+] as const;
+
+export const PESTICIDE_SUBCATEGORY_LABELS_JA: Record<PesticideSubcategory, string> = {
+  insecticide: "殺虫剤",
+  fungicide: "殺菌剤",
+  herbicide: "除草剤",
+  repellent: "忌避剤",
+  adhesive: "展着剤",
+};
+
+export interface MaterialDilutionRatio {
+  purpose: string;
+  ratio: number;
+}
+
+export interface MaterialDilution {
+  unit: string;
+  ratios: MaterialDilutionRatio[];
+}
+
+export interface MaterialRecord {
+  id: number;
+  name: string;
+  brand: string | null;
+  category: MaterialCategory;
+  subcategory: string | null;
+  targetTags: string[] | null;
+  tags: string[] | null;
+  dilution: MaterialDilution | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  affiliateLinks: Array<{ shop: string; url: string }> | null;
+  useCount: number;
+  userCount: number;
+}
+
+/**
+ * Issue #35: MaterialCategory 検証。
+ */
+export function isValidMaterialCategory(value: unknown): value is MaterialCategory {
+  return typeof value === "string" && (MATERIAL_CATEGORIES as readonly string[]).includes(value);
+}
+
+/**
+ * Issue #35: pesticide の subcategory 検証。
+ * pesticide 以外の category では subcategory は任意の文字列で許容するため、
+ * この関数は pesticide 用の厳格チェックにのみ使う。
+ */
+export function isValidPesticideSubcategory(value: unknown): value is PesticideSubcategory {
+  return (
+    typeof value === "string" && (PESTICIDE_SUBCATEGORIES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Issue #35: tags / targetTags の JSON 配列形式チェック。
+ * - 配列で、各要素が空でない文字列であること
+ * - 空配列も OK（API では NULL として保存）
+ */
+export function isValidTagArray(value: unknown): value is string[] {
+  if (!Array.isArray(value)) return false;
+  for (const t of value) {
+    if (typeof t !== "string" || t.length === 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Issue #35: dilution JSON の形式チェック。
+ * - `{ unit: string, ratios: [{ purpose: string, ratio: number }] }`
+ * - ratio は正の有限数。
+ */
+export function isValidMaterialDilution(value: unknown): value is MaterialDilution {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as { unit?: unknown; ratios?: unknown };
+  if (typeof obj.unit !== "string" || obj.unit.length === 0) return false;
+  if (!Array.isArray(obj.ratios)) return false;
+  for (const r of obj.ratios) {
+    if (!r || typeof r !== "object") return false;
+    const rec = r as { purpose?: unknown; ratio?: unknown };
+    if (typeof rec.purpose !== "string" || rec.purpose.length === 0) return false;
+    if (typeof rec.ratio !== "number" || !Number.isFinite(rec.ratio) || rec.ratio <= 0) {
+      return false;
+    }
+  }
+  return true;
+}

@@ -10,6 +10,7 @@ import type {
   ContainerType,
   CropHistoryRecord,
   GridRecord,
+  MaterialRecord,
   NutrientRecord,
   NutrientType,
   PesticideRecord,
@@ -37,6 +38,7 @@ import {
   fetchCellRecords,
   fetchPlanting,
   fetchWateringSettings,
+  recordMaterialUsage,
   recordNutrient,
   recordPesticide,
   recordPh,
@@ -44,6 +46,7 @@ import {
   setWateringInterval,
   updatePlanting,
 } from "../lib/grid-api";
+import MaterialPicker from "./MaterialPicker";
 import NutrientTimelineChart from "./charts/NutrientTimelineChart";
 import PhTimelineChart from "./charts/PhTimelineChart";
 
@@ -364,9 +367,14 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     nutrientType: NutrientType;
     amount?: number;
     note?: string;
+    materialId?: number;
   }): Promise<void> => {
     try {
       await recordNutrient(grid.id, pubkey, cellX, cellY, input);
+      // Issue #35: 資材マスタの利用カウントを fire-and-forget で加算
+      if (typeof input.materialId === "number") {
+        void recordMaterialUsage(input.materialId, pubkey).catch(() => undefined);
+      }
       setQuickForm(null);
       await reloadRecords();
       // Issue #25: タイムラインも更新
@@ -381,9 +389,14 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     pesticideType: PesticideType;
     amount?: number;
     note?: string;
+    materialId?: number;
   }): Promise<void> => {
     try {
       await recordPesticide(grid.id, pubkey, cellX, cellY, input);
+      // Issue #35: 資材マスタの利用カウントを fire-and-forget で加算
+      if (typeof input.materialId === "number") {
+        void recordMaterialUsage(input.materialId, pubkey).catch(() => undefined);
+      }
       setQuickForm(null);
       await reloadRecords();
       await onChanged();
@@ -536,10 +549,15 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
           </div>
 
           {quickForm === "nutrient" && (
-            <NutrientQuickForm onCancel={() => setQuickForm(null)} onSubmit={handleNutrientSaved} />
+            <NutrientQuickForm
+              pubkey={pubkey}
+              onCancel={() => setQuickForm(null)}
+              onSubmit={handleNutrientSaved}
+            />
           )}
           {quickForm === "pesticide" && (
             <PesticideQuickForm
+              pubkey={pubkey}
               onCancel={() => setQuickForm(null)}
               onSubmit={handlePesticideSaved}
             />
@@ -992,16 +1010,23 @@ function PhQuickForm(props: {
 // ---------------------------------------------------------------------------
 
 function NutrientQuickForm(props: {
+  pubkey: string;
   onCancel: () => void;
   onSubmit: (input: {
     nutrientType: NutrientType;
     amount?: number;
     note?: string;
+    materialId?: number;
   }) => void | Promise<void>;
 }): JSX.Element {
   const [nutrientType, setNutrientType] = useState<NutrientType>("organic");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [material, setMaterial] = useState<MaterialRecord | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  // Issue #35: nutrientType=organic → 固形肥料、それ以外 → 液体肥料を初期フィルタにする。
+  // 細かい切替 UI までは出さない（最小実装）。
+  const pickerCategory = nutrientType === "organic" ? "fertilizer_solid" : "fertilizer_liquid";
   return (
     <div
       data-testid="fip-cell-detail-nutrient-form"
@@ -1022,6 +1047,51 @@ function NutrientQuickForm(props: {
           ))}
         </select>
       </label>
+      {/* Issue #35: 資材選択（任意） */}
+      <div className="space-y-1 text-xs">
+        <span className="text-neutral-600">使った肥料（任意）</span>
+        {material ? (
+          <div
+            data-testid="fip-cell-detail-nutrient-material-selected"
+            className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-2"
+          >
+            <span>
+              <span className="font-medium">{material.name}</span>
+              {material.brand && <span className="ml-1 text-neutral-500">/ {material.brand}</span>}
+            </span>
+            <button
+              type="button"
+              data-testid="fip-cell-detail-nutrient-material-clear"
+              onClick={() => setMaterial(null)}
+              className="text-xs text-neutral-500"
+            >
+              ✕
+            </button>
+          </div>
+        ) : showPicker ? (
+          <div className="rounded border border-neutral-200 p-2">
+            <MaterialPicker
+              pubkey={props.pubkey}
+              category={pickerCategory}
+              onPick={(m) => {
+                setMaterial(m);
+                setShowPicker(false);
+              }}
+              onCancel={() => setShowPicker(false)}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid="fip-cell-detail-nutrient-material-open"
+            onClick={() => setShowPicker(true)}
+            className="rounded border border-emerald-300 px-2 py-2 text-xs text-emerald-700 hover:bg-emerald-50"
+            style={{ minHeight: 36 }}
+          >
+            資材マスタから選ぶ
+          </button>
+        )}
+      </div>
       <label className="block text-xs">
         量 (任意 / 数値)
         <input
@@ -1053,6 +1123,7 @@ function NutrientQuickForm(props: {
               nutrientType,
               amount: typeof num === "number" && Number.isFinite(num) ? num : undefined,
               note: note.trim() === "" ? undefined : note.trim(),
+              materialId: material?.id,
             });
           }}
           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
@@ -1078,16 +1149,20 @@ function NutrientQuickForm(props: {
 // ---------------------------------------------------------------------------
 
 function PesticideQuickForm(props: {
+  pubkey: string;
   onCancel: () => void;
   onSubmit: (input: {
     pesticideType: PesticideType;
     amount?: number;
     note?: string;
+    materialId?: number;
   }) => void | Promise<void>;
 }): JSX.Element {
   const [pesticideType, setPesticideType] = useState<PesticideType>("insecticide");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [material, setMaterial] = useState<MaterialRecord | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
   return (
     <div
       data-testid="fip-cell-detail-pesticide-form"
@@ -1108,6 +1183,51 @@ function PesticideQuickForm(props: {
           ))}
         </select>
       </label>
+      {/* Issue #35: 資材選択（任意） */}
+      <div className="space-y-1 text-xs">
+        <span className="text-neutral-600">使った農薬（任意）</span>
+        {material ? (
+          <div
+            data-testid="fip-cell-detail-pesticide-material-selected"
+            className="flex items-center justify-between rounded border border-red-200 bg-red-50 px-2 py-2"
+          >
+            <span>
+              <span className="font-medium">{material.name}</span>
+              {material.brand && <span className="ml-1 text-neutral-500">/ {material.brand}</span>}
+            </span>
+            <button
+              type="button"
+              data-testid="fip-cell-detail-pesticide-material-clear"
+              onClick={() => setMaterial(null)}
+              className="text-xs text-neutral-500"
+            >
+              ✕
+            </button>
+          </div>
+        ) : showPicker ? (
+          <div className="rounded border border-neutral-200 p-2">
+            <MaterialPicker
+              pubkey={props.pubkey}
+              category="pesticide"
+              onPick={(m) => {
+                setMaterial(m);
+                setShowPicker(false);
+              }}
+              onCancel={() => setShowPicker(false)}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid="fip-cell-detail-pesticide-material-open"
+            onClick={() => setShowPicker(true)}
+            className="rounded border border-red-300 px-2 py-2 text-xs text-red-700 hover:bg-red-50"
+            style={{ minHeight: 36 }}
+          >
+            資材マスタから選ぶ
+          </button>
+        )}
+      </div>
       <label className="block text-xs">
         量 (任意 / 数値)
         <input
@@ -1139,6 +1259,7 @@ function PesticideQuickForm(props: {
               pesticideType,
               amount: typeof num === "number" && Number.isFinite(num) ? num : undefined,
               note: note.trim() === "" ? undefined : note.trim(),
+              materialId: material?.id,
             });
           }}
           className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white"

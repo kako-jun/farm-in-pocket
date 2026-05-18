@@ -2,6 +2,7 @@ import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import cellActionsRouter from "./routes/cell-actions";
 import gridsRouter from "./routes/grids";
+import materialsRouter from "./routes/materials";
 import { plantingsCreateRouter, plantingsItemRouter } from "./routes/plantings";
 import plantsRouter from "./routes/plants";
 import profilesRouter from "./routes/profiles";
@@ -56,5 +57,10 @@ app.route("/api/weather", weatherRouter);
 //   /api/seed-products/:id (GET)
 //   /api/seed-products/:id/use (POST 利用カウント)
 app.route("/api/seed-products", seedProductsRouter);
+// Issue #35: 資材マスター（用土・肥料・農薬・道具、コミュニティ参加型）
+//   /api/materials (GET 検索 / POST 登録)
+//   /api/materials/:id (GET)
+//   /api/materials/:id/use (POST 利用カウント)
+app.route("/api/materials", materialsRouter);
 
 export default app;

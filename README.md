@@ -462,6 +462,46 @@ iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予
 
 「作物を植える」フローで `SeedProductPicker` から検索・選択・新規登録できます。選択された種・苗 ID は plantings.seed_product_id に保存されます。
 
+## マスター DB（資材）
+
+`materials` テーブルに用土・肥料・農薬・道具などの資材を登録できます（Issue #35）。
+種・苗マスタと同じ「コミュニティ参加型」運用で、誰でも追加可能。
+
+- `GET /api/materials?q=&category=&subcategory=&limit=50` — 検索（name/brand LIKE、category/subcategory 完全一致）
+- `GET /api/materials/:id` — 単体取得
+- `POST /api/materials` — body: `{ pubkey, name, brand?, category, subcategory?, targetTags?, tags?, dilution?, description?, thumbnailUrl?, affiliateLinks? }`
+- `POST /api/materials/:id/use` — `use_count++` と `material_users` への UPSERT で `user_count` を DISTINCT pubkey で集計
+
+### カテゴリ
+
+| category | 説明 | subcategory |
+|---|---|---|
+| `soil` | 用土 | 自由文字列（任意） |
+| `fertilizer_solid` | 肥料（固形） | 自由文字列（任意） |
+| `fertilizer_liquid` | 肥料（液体） | 自由文字列（任意） |
+| `pesticide` | 農薬 | `insecticide` / `fungicide` / `herbicide` / `repellent` / `adhesive` のいずれか |
+| `tool` | 資材・道具 | 自由文字列（任意） |
+
+`pesticide` の `subcategory` のみ列挙チェックが入ります（殺虫/殺菌/除草/忌避/展着）。それ以外は将来拡張の余地を残すため自由文字列です。
+
+### dilution（希釈倍率）の JSON 形式
+
+液体肥料・農薬で希釈倍率を表現するための JSON。任意項目。
+
+```json
+{
+  "unit": "倍液",
+  "ratios": [
+    { "purpose": "野菜全般", "ratio": 500 },
+    { "purpose": "観葉植物", "ratio": 1000 }
+  ]
+}
+```
+
+### 使用カウント
+
+施肥フォーム（`category=fertilizer_solid` / `fertilizer_liquid`）と農薬フォーム（`category=pesticide`）で `MaterialPicker` から資材を選択すると、`nutrient_records.material_id` / `pesticide_records.material_id` に保存され、`POST /api/materials/:id/use` が fire-and-forget で呼ばれて `use_count` / `user_count` が加算されます。
+
 ## 設計参照
 
 詳細な設計メモはローカルの Agasteer 上にあります:
