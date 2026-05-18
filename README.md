@@ -95,6 +95,36 @@ main マージ後、GitHub Actions が以下を実行:
 
 実装は `nostr-tools` には依存せず、`@noble/secp256k1` v3 / `@noble/hashes` / `@scure/base` を直接使った最小実装（NIP-01 イベント署名 / NIP-19 nsec/npub / NIP-98 HTTP 認証）を `packages/shared/src/nostr/` に持っています。
 
+## マイ畑（グリッド）
+
+`/grid` ページから「マイ畑」を編集できます（Phase 1 / Issue #13）。
+
+- **最大 9×9 グリッド**（実用 5×5 想定）。各セルは大きめのタップ領域でモバイル前提。
+- **VOID セル**: 畝の外を「畑じゃない場所」として明示するための塗り潰し（背景斜線テクスチャ）。
+- **容器 / 用土**: 各セルに容器タイプ（地植え / プランター / 鉢 / コンテナ / 板付け / ハンギング / 水耕 / その他）と用土タイプ（培養土 / 赤玉土 / 腐葉土 / ハイドロボール / 水苔 / ココチップ / 軽石 / 砂 / 水のみ / 養液 / なし / その他）を割り当て。
+- **環境フラグ**: グリッド単位で「屋外（日向 / 半日陰 / 日陰）/ 室内 / 温室」を選択。室内のときだけ照明（自然光 / 育成ライト / 蛍光灯）を追加で選べる。屋外と室内で容器の選択肢を出し分け。
+- **作物を植える**: セル → 「作物を植える」→ 検索（debounce 300ms）→ 選んだ作物の `plantings` レコードを作成。`seeding_date` は今日に自動セット。ライフサイクル詳細（germination / state 遷移 / 終了タグ）は後続 Issue で。
+- **サイズ変更**: グリッドの size_x / size_y を変えると「過去の連作履歴との対応がリセットされます」確認ダイアログが出る（座標ベースで履歴管理しているため）。
+
+データは **Cloudflare D1** に保存され、Nostr リレーには流れません。プライバシー方針として「日記＝D1、写真＝Nostr」を分離しています。
+
+作物マスタは `apps/api/migrations/0002_seed_initial_plants.sql` で 20 件投入されます（トマト / ミニトマト / きゅうり / なす / ピーマン / じゃがいも / さつまいも / バジル / しそ / パセリ / ねぎ / レタス / ほうれん草 / 大根 / にんじん / ひまわり / チューリップ / モンステラ / ポトス / サボテン）。`family` は連作管理に効くため Wikipedia ベースで設定済み。
+
+### API (Phase 1 範囲)
+
+NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範囲（Issue #16 以降で NIP-98 化予定）。
+
+- `GET    /api/grids?pubkey=<hex64>` — そのユーザーの全グリッド + cells を返す
+- `POST   /api/grids` — 新規グリッド作成（profiles も同時 upsert）
+- `PATCH  /api/grids/:id` — 部分更新。size_x/size_y 変更時はレスポンスに `cropHistoryResetWarning: true`
+- `DELETE /api/grids/:id` — cells / plantings / crop_history も手動カスケード削除
+- `PUT    /api/grids/:gridId/cells/:x/:y` — container_type / soil_type の upsert
+- `DELETE /api/grids/:gridId/cells/:x/:y` — セル削除（VOID 解除や planting 解除には DELETE を使う）
+- `GET    /api/plants?q=&family=&category=` — 作物マスタ検索（最大 50 件）
+- `GET    /api/plants/:id` — 単体取得
+- `POST   /api/grids/:gridId/cells/:x/:y/plantings` — 作物を植える
+- `DELETE /api/plantings/:id` — 撤去（cells.current_planting_id を NULL に戻す）
+
 ## ディレクトリ構成
 
 ```

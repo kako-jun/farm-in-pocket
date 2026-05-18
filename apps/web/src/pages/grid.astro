@@ -1,0 +1,26 @@
+---
+import GridEditor from "../components/GridEditor";
+import "../styles/global.css";
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>マイ畑 — Farm in Pocket (ポケ農)</title>
+  </head>
+  <body>
+    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-4 max-w-3xl mx-auto space-y-6">
+      <header class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">🌱 マイ畑</h1>
+        <nav class="flex gap-3 text-sm">
+          <a class="text-emerald-700 hover:underline" href="/">ホーム</a>
+          <a class="text-emerald-700 hover:underline" href="/settings">設定</a>
+        </nav>
+      </header>
+      <section>
+        <GridEditor client:load />
+      </section>
+    </main>
+  </body>
+</html>
