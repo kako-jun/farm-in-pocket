@@ -242,6 +242,14 @@ export interface PlantingRecord {
   cellId: number;
   plantId: number;
   seedProductId: number | null;
+  /**
+   * Issue #34 レビュー MUST-1: GET /api/plantings/:id では LEFT JOIN で
+   * 種・苗マスタの name を凍結返却し、CellDetail で「使った種・苗」を表示できるようにする。
+   * - seed_product_id が NULL: 当然 null。
+   * - seed_product_id があるが seed_products から消えた: null（旧クライアントの互換のため
+   *   404 ではなく単に「分からない」を意味する null を返す）。
+   */
+  seedProductName: string | null;
   state: PlantingState;
   seedingDate: string | null;
   germinationDate: string | null;

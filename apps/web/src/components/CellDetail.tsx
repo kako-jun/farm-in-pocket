@@ -1409,6 +1409,14 @@ function PlantingPanel(props: {
             終了: {planting.endDate.slice(0, 10)}
           </li>
         )}
+        {/* Issue #34 レビュー MUST-1: 使った種・苗マスタの名前を表示する。
+         *   API 側 (GET /api/plantings/:id) で LEFT JOIN seed_products して name を返す。
+         *   seed_product 行が削除されていても seedProductName は null になるだけで落ちない。 */}
+        {planting.seedProductName != null && (
+          <li data-testid="fip-cell-detail-planting-seed-product">
+            使った種・苗: {planting.seedProductName}
+          </li>
+        )}
       </ul>
 
       {/* 終了済みなら end_tag と failure_memo を出す */}

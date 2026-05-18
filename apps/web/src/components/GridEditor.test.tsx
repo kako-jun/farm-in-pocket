@@ -568,6 +568,12 @@ describe("GridEditor", () => {
         plants: [{ id: 10, name: "トマト", nameEn: "Tomato", family: "ナス科" }],
       },
     });
+    // Issue #34: plant 選択後に SeedProductPicker が出るので、種・苗の検索結果も
+    // 空で返しておく（テストでは「種袋なしで進める」を踏ませる）。
+    routes.push({
+      match: (u, i) => /\/api\/seed-products\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { products: [] },
+    });
   }
 
   it("Issue #23: 連作警告が出たらダイアログを表示し、OK で confirmRotation: true で再 POST する", async () => {
@@ -630,6 +636,8 @@ describe("GridEditor", () => {
     await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
     // PlantPicker で「トマト」を選ぶ
     await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    // Issue #34: SeedProductPicker が間に出るので「種袋なしで進める」で抜ける。
+    await user.click(await screen.findByTestId("fip-seed-product-picker-skip"));
     // 警告ダイアログが出る
     const dialog = await screen.findByTestId("fip-rotation-confirm");
     expect(dialog).toBeInTheDocument();
@@ -686,6 +694,8 @@ describe("GridEditor", () => {
     await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
     await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
     await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    // Issue #34: SeedProductPicker を skip して plant POST へ進める。
+    await user.click(await screen.findByTestId("fip-seed-product-picker-skip"));
     await screen.findByTestId("fip-rotation-confirm");
     expect(postCount).toBe(1);
     await user.click(screen.getByTestId("fip-rotation-confirm-cancel"));
@@ -767,6 +777,182 @@ describe("GridEditor", () => {
       const body = JSON.parse(patch?.body ?? "{}");
       expect(body.archive).toBe(true);
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #34: SeedProductPicker 統合フロー
+  // -------------------------------------------------------------------------
+
+  // PlantPicker → SeedProductPicker → createPlanting までを 1 グリッド 1 セルで通すための fixtures。
+  // 警告系は無し（連作履歴空）なので rotation_warning は出ない前提。
+  function seedSeedProductFlowFixtures(opts: { products: unknown[] }): void {
+    seedSecretKey();
+    routes.push({
+      match: (u) => u.includes("/api/grids?pubkey="),
+      response: {
+        grids: [
+          {
+            id: "g1",
+            userPubkey: "x".repeat(64),
+            name: "畑",
+            environment: "outdoor_sunny",
+            lighting: null,
+            sizeX: 1,
+            sizeY: 1,
+            sortOrder: 0,
+            cells: [],
+          },
+        ],
+      },
+    });
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/records/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u, i) =>
+        /\/api\/grids\/g1\/cells\/0\/0\/history/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/plants\?q=/.test(u) && (i?.method ?? "GET") === "GET",
+      response: {
+        plants: [{ id: 10, name: "トマト", nameEn: "Tomato", family: "ナス科" }],
+      },
+    });
+    routes.push({
+      match: (u, i) => /\/api\/seed-products\?/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { products: opts.products },
+    });
+  }
+
+  it("Issue #34: plant 選択 → SeedProductPicker → 種・苗を選ぶと createPlanting に seedProductId が乗る", async () => {
+    seedSeedProductFlowFixtures({
+      products: [
+        {
+          id: 77,
+          name: "桃太郎",
+          brand: "タキイ",
+          plantId: 10,
+          plantName: "トマト",
+          type: "seed",
+          thumbnailUrl: null,
+          affiliateLinks: null,
+          useCount: 0,
+          userCount: 0,
+        },
+      ],
+    });
+    routes.push({
+      match: (u, i) => /\/cells\/0\/0\/plantings$/.test(u) && i?.method === "POST",
+      response: {
+        ok: true,
+        planting: {
+          id: 99,
+          cellId: 1,
+          plantId: 10,
+          seedProductId: 77,
+          seedingDate: "2026-05-18",
+          plantingDate: null,
+          note: null,
+        },
+      },
+      status: 201,
+    });
+    routes.push({
+      match: (u, i) => /\/api\/seed-products\/77\/use$/.test(u) && i?.method === "POST",
+      response: { ok: true },
+    });
+
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
+    await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    // SeedProductPicker が表示される
+    expect(await screen.findByTestId("fip-seed-product-modal")).toBeInTheDocument();
+    // 種・苗をクリック
+    await user.click(await screen.findByTestId("fip-seed-product-pick-77"));
+    await waitFor(() => {
+      const post = fetchCalls.find(
+        (c) => c.method === "POST" && /\/cells\/0\/0\/plantings$/.test(c.url),
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}");
+      expect(body.plantId).toBe(10);
+      expect(body.seedProductId).toBe(77);
+    });
+    // 利用カウント加算 (fire-and-forget) も呼ばれる
+    await waitFor(() => {
+      const useCall = fetchCalls.find(
+        (c) => c.method === "POST" && /\/api\/seed-products\/77\/use$/.test(c.url),
+      );
+      expect(useCall).toBeDefined();
+    });
+  });
+
+  it("Issue #34: plant 選択 → SeedProductPicker でスキップすると seedProductId 無しで createPlanting", async () => {
+    seedSeedProductFlowFixtures({ products: [] });
+    routes.push({
+      match: (u, i) => /\/cells\/0\/0\/plantings$/.test(u) && i?.method === "POST",
+      response: {
+        ok: true,
+        planting: {
+          id: 100,
+          cellId: 1,
+          plantId: 10,
+          seedProductId: null,
+          seedingDate: "2026-05-18",
+          plantingDate: null,
+          note: null,
+        },
+      },
+      status: 201,
+    });
+
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
+    await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    expect(await screen.findByTestId("fip-seed-product-modal")).toBeInTheDocument();
+    await user.click(await screen.findByTestId("fip-seed-product-picker-skip"));
+    await waitFor(() => {
+      const post = fetchCalls.find(
+        (c) => c.method === "POST" && /\/cells\/0\/0\/plantings$/.test(c.url),
+      );
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}");
+      expect(body.plantId).toBe(10);
+      // skip 時は seedProductId プロパティ自体を載せない（または null）。どちらでも API は許容するが、
+      // 「載せない」のがクライアントの意図なので、その仕様を凍結する。
+      expect(body.seedProductId).toBeUndefined();
+    });
+    // POST 完了後に seed-product モーダルは閉じる
+    await waitFor(() => {
+      expect(screen.queryByTestId("fip-seed-product-modal")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Issue #34: SeedProductPicker の「閉じる」で plant POST が発火せずモーダルだけ閉じる", async () => {
+    seedSeedProductFlowFixtures({ products: [] });
+    // plantings POST は登録しない（呼ばれたら 500 で fail させて検知する）。
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await user.click(await screen.findByTestId("fip-grid-cell-0-0"));
+    await user.click(await screen.findByTestId("fip-cell-detail-edit-plant"));
+    await user.click(await screen.findByTestId("fip-plant-pick-10"));
+    expect(await screen.findByTestId("fip-seed-product-modal")).toBeInTheDocument();
+    await user.click(screen.getByTestId("fip-seed-product-modal-close"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("fip-seed-product-modal")).not.toBeInTheDocument();
+    });
+    // plant POST が発火していないこと
+    const post = fetchCalls.find(
+      (c) => c.method === "POST" && /\/cells\/0\/0\/plantings$/.test(c.url),
+    );
+    expect(post).toBeUndefined();
   });
 
   it("Issue #40: 「凍結中を表示」トグルで GET /api/grids に includeArchived=true が乗る", async () => {

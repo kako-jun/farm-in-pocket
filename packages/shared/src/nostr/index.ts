@@ -4,7 +4,13 @@
 import "./_hashes";
 
 export { bytesToHex, decodeNpub, decodeNsec, encodeNpub, encodeNsec, hexToBytes } from "./bech32";
-export { generateSecretKey, getPublicKey, isValidPubkeyHex, isValidSecretKey } from "./keys";
+export {
+  generateSecretKey,
+  getPublicKey,
+  isValidPubkeyHex,
+  isValidSecretKey,
+  normalizePubkey,
+} from "./keys";
 export { signEvent, verifyEvent, type SignEventDraft } from "./sign";
 export {
   NIP98_KIND,

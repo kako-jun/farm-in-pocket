@@ -37,6 +37,9 @@ interface PlantingRow {
   cell_id: number;
   plant_id: number;
   seed_product_id: number | null;
+  // Issue #34 レビュー MUST-1: GET /api/plantings/:id で LEFT JOIN seed_products することで
+  // CellDetail に「使った種・苗」名を表示する。seed_product が削除されていれば NULL。
+  seed_product_name: string | null;
   state: PlantingState;
   seeding_date: string | null;
   germination_date: string | null;
@@ -56,6 +59,7 @@ function toPlantingRecord(row: PlantingRow): PlantingRecord {
     cellId: row.cell_id,
     plantId: row.plant_id,
     seedProductId: row.seed_product_id,
+    seedProductName: row.seed_product_name,
     state: row.state,
     seedingDate: row.seeding_date,
     germinationDate: row.germination_date,
@@ -69,6 +73,28 @@ function toPlantingRecord(row: PlantingRow): PlantingRecord {
     note: row.note,
   };
 }
+
+// GET / PATCH 共通の SELECT 句。seed_products を LEFT JOIN して name を取り込む。
+// plantings 単体テーブルの SELECT は ALIAS 解決の都合で fully qualified にしている。
+const PLANTING_SELECT_FIELDS = `pl.id AS id,
+       pl.cell_id AS cell_id,
+       pl.plant_id AS plant_id,
+       pl.seed_product_id AS seed_product_id,
+       sp.name AS seed_product_name,
+       pl.state AS state,
+       pl.seeding_date AS seeding_date,
+       pl.germination_date AS germination_date,
+       pl.planting_date AS planting_date,
+       pl.end_date AS end_date,
+       pl.end_tag AS end_tag,
+       pl.seeding_depth_cm AS seeding_depth_cm,
+       pl.plant_spacing_cm AS plant_spacing_cm,
+       pl.row_spacing_cm AS row_spacing_cm,
+       pl.failure_memo AS failure_memo,
+       pl.note AS note`;
+
+const PLANTING_FROM_JOIN =
+  "FROM plantings pl LEFT JOIN seed_products sp ON sp.id = pl.seed_product_id";
 
 // Issue #22: 座標ベース連作履歴
 // 採用日（planting_date → seeding_date → today）から year と season を導出する。
@@ -136,6 +162,9 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
 
   // Issue #34: seed_product_id（種・苗マスター参照、任意）。
   // 数値が来たら正整数チェックして紐付ける。invalid なら 400。
+  // Issue #34 レビュー MUST-3: ID は存在チェック必須。存在しないものを紐付けると
+  // 「GET /api/plantings/:id で JOIN しても name が NULL」「外部から不正値で
+  // ぶら下がりが作られる」等の事故になるため、SELECT で確認して 404 を返す。
   let seedProductId: number | null = null;
   if (body.seedProductId !== undefined && body.seedProductId !== null) {
     if (
@@ -144,6 +173,12 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
       body.seedProductId <= 0
     ) {
       return c.json({ error: "invalid seedProductId" }, 400);
+    }
+    const seedProductRow = await c.env.DB.prepare("SELECT id FROM seed_products WHERE id = ?")
+      .bind(body.seedProductId)
+      .first<{ id: number }>();
+    if (!seedProductRow) {
+      return c.json({ error: "seed_product not found" }, 404);
     }
     seedProductId = body.seedProductId;
   }
@@ -314,10 +349,7 @@ itemApp.get("/:id", async (c) => {
   if (!auth.ok) return c.json({ error: auth.error }, auth.status);
 
   const row = await c.env.DB.prepare(
-    `SELECT id, cell_id, plant_id, seed_product_id, state,
-            seeding_date, germination_date, planting_date, end_date, end_tag,
-            seeding_depth_cm, plant_spacing_cm, row_spacing_cm, failure_memo, note
-       FROM plantings WHERE id = ?`,
+    `SELECT ${PLANTING_SELECT_FIELDS} ${PLANTING_FROM_JOIN} WHERE pl.id = ?`,
   )
     .bind(id)
     .first<PlantingRow>();
@@ -355,10 +387,7 @@ itemApp.patch("/:id", async (c) => {
 
   // 現在の planting を取って、未指定フィールドの fallback と state 遷移の判定に使う。
   const current = await c.env.DB.prepare(
-    `SELECT id, cell_id, plant_id, seed_product_id, state,
-            seeding_date, germination_date, planting_date, end_date, end_tag,
-            seeding_depth_cm, plant_spacing_cm, row_spacing_cm, failure_memo, note
-       FROM plantings WHERE id = ?`,
+    `SELECT ${PLANTING_SELECT_FIELDS} ${PLANTING_FROM_JOIN} WHERE pl.id = ?`,
   )
     .bind(id)
     .first<PlantingRow>();
@@ -487,10 +516,7 @@ itemApp.patch("/:id", async (c) => {
   }
 
   const updated = await c.env.DB.prepare(
-    `SELECT id, cell_id, plant_id, seed_product_id, state,
-            seeding_date, germination_date, planting_date, end_date, end_tag,
-            seeding_depth_cm, plant_spacing_cm, row_spacing_cm, failure_memo, note
-       FROM plantings WHERE id = ?`,
+    `SELECT ${PLANTING_SELECT_FIELDS} ${PLANTING_FROM_JOIN} WHERE pl.id = ?`,
   )
     .bind(id)
     .first<PlantingRow>();
