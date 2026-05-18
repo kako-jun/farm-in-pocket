@@ -148,7 +148,11 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - **「投稿する」** で `mypace` API（`POST /api/publish`）へ NIP-98 認証付きで送信。署名は端末側で行います（`packages/shared/src/nostr/sign.ts`）。
 - **オフライン/失敗時**: 送信に失敗したら自動で下書きキューに退避。あとから「編集して投稿」できます。
 - **「下書き保存」** で任意のタイミングで退避。下書き一覧から再開できます。
-- **写真の添付** は Issue #17 で実装予定（フォームに placeholder ボタンを設置）。
+- **写真の添付**（Issue #17）。1 投稿あたり最大 **4 枚**まで添付できます。
+  - 画像本体は **[nostr.build](https://nostr.build/)** に **NIP-98** 認証付きで直接アップロードされます（mypace API は経由しません）。
+  - 成功した URL は mypace `/api/uploads` に履歴として fire-and-forget で記録されます（履歴登録の失敗はアップロード本体の成功を妨げません）。
+  - サムネの **×** ボタンで個別に削除できます（nostr.build からも `NIP-96 DELETE` で削除を試みます）。
+  - **アップロード上限**: 画像 **10MB** / 動画 **10MB** / 音声 **1MB**。上限超過時はアップロード前に弾きます。
 
 ### Nostr イベント仕様（kind = 1）
 
@@ -158,7 +162,7 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 | `["farm-action", <FarmAction>]`               | 作業種別（`seeding` / `watering` / `harvest` / ...）          |
 | `["farm-crop", <name>]`                       | 作物名（任意）                                                |
 | `["farm-cell", <gridId>, <x>, <y>]`           | 紐付け先セル（gridId + x + y がすべて揃ったときだけ）         |
-| `["image", <url>]` ×N                         | 添付写真（Issue #17 で増える）                                |
+| `["image", <url>]` ×N                         | 添付写真の URL（nostr.build、最大 4 枚、Issue #17）           |
 
 ### ローカルストレージキー
 
