@@ -1,0 +1,320 @@
+// 種・苗マスター API (Issue: kako-jun/farm-in-pocket#34)
+//
+// 市販の種袋・苗パック・球根の商品マスタ。コミュニティ参加型なので
+// 当面は誰でも登録可能（pubkey の存在チェックは行うが、認可は無い）。
+// 重複防止は (brand, name, type) の擬似ユニーク（INSERT 前に検索）。
+//
+// エンドポイント:
+//   GET  /api/seed-products?q=&plantId=&type=&limit=50  検索
+//   GET  /api/seed-products/:id                          単体取得
+//   POST /api/seed-products                              新規登録（誰でも可）
+//   POST /api/seed-products/:id/use                      利用カウント加算
+//
+// use_count は呼び出すたびに +1（のべ）。
+// user_count は seed_product_users に (seed_product_id, pubkey) を INSERT OR IGNORE して、
+// 新規行が増えたら +1（DISTINCT）。
+
+import type {
+  SeedProductAffiliateLink,
+  SeedProductRecord,
+  SeedProductType,
+} from "@farm-in-pocket/shared";
+import {
+  isValidAffiliateLinks,
+  isValidPubkeyHex,
+  isValidSeedProductType,
+} from "@farm-in-pocket/shared";
+import { Hono } from "hono";
+
+type Bindings = {
+  DB: D1Database;
+};
+
+interface SeedProductRow {
+  id: number;
+  name: string;
+  brand: string | null;
+  plant_id: number;
+  plant_name: string | null;
+  type: SeedProductType;
+  thumbnail_url: string | null;
+  affiliate_links: string | null;
+  use_count: number;
+  user_count: number;
+}
+
+function parseAffiliateLinks(raw: string | null): SeedProductAffiliateLink[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (isValidAffiliateLinks(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function toRecord(row: SeedProductRow): SeedProductRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    brand: row.brand,
+    plantId: row.plant_id,
+    plantName: row.plant_name,
+    type: row.type,
+    thumbnailUrl: row.thumbnail_url,
+    affiliateLinks: parseAffiliateLinks(row.affiliate_links),
+    useCount: row.use_count,
+    userCount: row.user_count,
+  };
+}
+
+const SELECT_BASE = `SELECT sp.id          AS id,
+                            sp.name        AS name,
+                            sp.brand       AS brand,
+                            sp.plant_id    AS plant_id,
+                            p.name         AS plant_name,
+                            sp.type        AS type,
+                            sp.thumbnail_url   AS thumbnail_url,
+                            sp.affiliate_links AS affiliate_links,
+                            sp.use_count   AS use_count,
+                            sp.user_count  AS user_count
+                       FROM seed_products sp
+                  LEFT JOIN plants p ON p.id = sp.plant_id`;
+
+const app = new Hono<{ Bindings: Bindings }>();
+
+// ----------------------------------------------------------------------------
+// GET /api/seed-products?q=&plantId=&type=&limit=
+// ----------------------------------------------------------------------------
+app.get("/", async (c) => {
+  const q = c.req.query("q")?.trim() ?? "";
+  const plantIdRaw = c.req.query("plantId")?.trim() ?? "";
+  const typeRaw = c.req.query("type")?.trim() ?? "";
+  const limitRaw = c.req.query("limit")?.trim() ?? "";
+
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (q.length > 0) {
+    where.push("(sp.name LIKE ? OR sp.brand LIKE ?)");
+    const like = `%${q}%`;
+    binds.push(like, like);
+  }
+  if (plantIdRaw.length > 0) {
+    const plantId = Number(plantIdRaw);
+    if (!Number.isInteger(plantId) || plantId <= 0) {
+      return c.json({ error: "invalid plantId" }, 400);
+    }
+    where.push("sp.plant_id = ?");
+    binds.push(plantId);
+  }
+  if (typeRaw.length > 0) {
+    if (!isValidSeedProductType(typeRaw)) {
+      return c.json({ error: "invalid type" }, 400);
+    }
+    where.push("sp.type = ?");
+    binds.push(typeRaw);
+  }
+
+  let limit = 50;
+  if (limitRaw.length > 0) {
+    const parsed = Number(limitRaw);
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 200) {
+      return c.json({ error: "invalid limit" }, 400);
+    }
+    limit = parsed;
+  }
+
+  const sql = `${SELECT_BASE}${
+    where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
+  } ORDER BY sp.use_count DESC, sp.id DESC LIMIT ?`;
+
+  const result = await c.env.DB.prepare(sql)
+    .bind(...binds, limit)
+    .all<SeedProductRow>();
+  const products = (result.results ?? []).map(toRecord);
+  return c.json({ products });
+});
+
+// ----------------------------------------------------------------------------
+// GET /api/seed-products/:id
+// ----------------------------------------------------------------------------
+app.get("/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: "invalid id" }, 400);
+  }
+  const row = await c.env.DB.prepare(`${SELECT_BASE} WHERE sp.id = ?`)
+    .bind(id)
+    .first<SeedProductRow>();
+  if (!row) return c.json({ error: "not found" }, 404);
+  return c.json({ product: toRecord(row) });
+});
+
+// ----------------------------------------------------------------------------
+// POST /api/seed-products
+// body: { pubkey, name, brand?, plantId, type, thumbnailUrl?, affiliateLinks? }
+// 認可: 当面誰でも登録可能（pubkey の hex64 形式だけは検証）。
+// 重複: (brand, name, type) で擬似ユニーク。既存があれば既存レコードを返す。
+// ----------------------------------------------------------------------------
+app.post("/", async (c) => {
+  const body = await c.req.json<{
+    pubkey?: unknown;
+    name?: unknown;
+    brand?: unknown;
+    plantId?: unknown;
+    type?: unknown;
+    thumbnailUrl?: unknown;
+    affiliateLinks?: unknown;
+  }>();
+
+  if (typeof body.pubkey !== "string" || !isValidPubkeyHex(body.pubkey)) {
+    return c.json({ error: "invalid pubkey" }, 400);
+  }
+  if (typeof body.name !== "string" || body.name.trim().length === 0) {
+    return c.json({ error: "invalid name" }, 400);
+  }
+  if (typeof body.plantId !== "number" || !Number.isInteger(body.plantId) || body.plantId <= 0) {
+    return c.json({ error: "invalid plantId" }, 400);
+  }
+  if (!isValidSeedProductType(body.type)) {
+    return c.json({ error: "invalid type" }, 400);
+  }
+  const name = body.name.trim();
+  const type: SeedProductType = body.type;
+  const plantId = body.plantId;
+
+  let brand: string | null = null;
+  if (body.brand !== undefined && body.brand !== null) {
+    if (typeof body.brand !== "string") {
+      return c.json({ error: "invalid brand" }, 400);
+    }
+    const trimmed = body.brand.trim();
+    brand = trimmed.length > 0 ? trimmed : null;
+  }
+
+  let thumbnailUrl: string | null = null;
+  if (body.thumbnailUrl !== undefined && body.thumbnailUrl !== null) {
+    if (typeof body.thumbnailUrl !== "string") {
+      return c.json({ error: "invalid thumbnailUrl" }, 400);
+    }
+    const trimmed = body.thumbnailUrl.trim();
+    if (trimmed.length > 0) {
+      if (!/^https?:\/\//i.test(trimmed)) {
+        return c.json({ error: "invalid thumbnailUrl" }, 400);
+      }
+      thumbnailUrl = trimmed;
+    }
+  }
+
+  let affiliateLinks: SeedProductAffiliateLink[] | null = null;
+  if (body.affiliateLinks !== undefined && body.affiliateLinks !== null) {
+    if (!isValidAffiliateLinks(body.affiliateLinks)) {
+      return c.json({ error: "invalid affiliateLinks" }, 400);
+    }
+    affiliateLinks = body.affiliateLinks.length > 0 ? body.affiliateLinks : null;
+  }
+
+  // plant 存在チェック
+  const plant = await c.env.DB.prepare("SELECT id FROM plants WHERE id = ?")
+    .bind(plantId)
+    .first<{ id: number }>();
+  if (!plant) return c.json({ error: "plant not found" }, 400);
+
+  // 擬似ユニーク (brand, name, type)。brand=NULL は IS NULL で比較する必要がある。
+  const dupSql =
+    brand === null
+      ? `${SELECT_BASE} WHERE sp.name = ? AND sp.type = ? AND sp.brand IS NULL`
+      : `${SELECT_BASE} WHERE sp.name = ? AND sp.type = ? AND sp.brand = ?`;
+  const dupBinds: unknown[] = brand === null ? [name, type] : [name, type, brand];
+  const existing = await c.env.DB.prepare(dupSql)
+    .bind(...dupBinds)
+    .first<SeedProductRow>();
+  if (existing) {
+    return c.json({ product: toRecord(existing), duplicated: true });
+  }
+
+  const affiliateLinksJson = affiliateLinks ? JSON.stringify(affiliateLinks) : null;
+  const insertResult = await c.env.DB.prepare(
+    `INSERT INTO seed_products (name, brand, plant_id, type, thumbnail_url, affiliate_links)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(name, brand, plantId, type, thumbnailUrl, affiliateLinksJson)
+    .run();
+
+  const newId = insertResult.meta?.last_row_id;
+  if (typeof newId !== "number") {
+    return c.json({ error: "insert failed" }, 500);
+  }
+  const row = await c.env.DB.prepare(`${SELECT_BASE} WHERE sp.id = ?`)
+    .bind(newId)
+    .first<SeedProductRow>();
+  if (!row) return c.json({ error: "vanished" }, 500);
+  return c.json({ product: toRecord(row), duplicated: false }, 201);
+});
+
+// ----------------------------------------------------------------------------
+// POST /api/seed-products/:id/use
+// body: { pubkey }
+//   - use_count は毎回 +1（のべ）。
+//   - user_count は seed_product_users に INSERT OR IGNORE して
+//     RETURNING で行が増えたら +1。D1 は RETURNING に対応しているが、
+//     互換のため changes() で判定する。
+// ----------------------------------------------------------------------------
+app.post("/:id/use", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: "invalid id" }, 400);
+  }
+  const body = await c.req.json<{ pubkey?: unknown }>().catch(() => ({}) as { pubkey?: unknown });
+  const rawPubkey = body.pubkey;
+  if (typeof rawPubkey !== "string" || !isValidPubkeyHex(rawPubkey)) {
+    return c.json({ error: "invalid pubkey" }, 400);
+  }
+  const pubkey = rawPubkey.toLowerCase();
+
+  const exists = await c.env.DB.prepare("SELECT id FROM seed_products WHERE id = ?")
+    .bind(id)
+    .first<{ id: number }>();
+  if (!exists) return c.json({ error: "not found" }, 404);
+
+  const insertUser = await c.env.DB.prepare(
+    "INSERT OR IGNORE INTO seed_product_users (seed_product_id, pubkey) VALUES (?, ?)",
+  )
+    .bind(id, pubkey)
+    .run();
+
+  // changes / meta.changes は環境差を吸収する。D1 は meta.changes を返す。
+  const changed = insertUser.meta?.changes ?? 0;
+  if (changed > 0) {
+    await c.env.DB.prepare(
+      `UPDATE seed_products
+          SET use_count = use_count + 1,
+              user_count = user_count + 1,
+              updated_at = datetime('now')
+        WHERE id = ?`,
+    )
+      .bind(id)
+      .run();
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE seed_products
+          SET use_count = use_count + 1,
+              updated_at = datetime('now')
+        WHERE id = ?`,
+    )
+      .bind(id)
+      .run();
+  }
+
+  const row = await c.env.DB.prepare(`${SELECT_BASE} WHERE sp.id = ?`)
+    .bind(id)
+    .first<SeedProductRow>();
+  if (!row) return c.json({ error: "vanished" }, 500);
+  return c.json({ ok: true, product: toRecord(row), firstUse: changed > 0 });
+});
+
+export default app;

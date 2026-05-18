@@ -451,6 +451,17 @@ packages/shared  型 & mypace API クライアント         (Phase 0 で初期�
 iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予定)
 ```
 
+## マスター DB（種・苗）
+
+`seed_products` テーブルに市販の種袋・苗パック・球根を登録できます（Issue #34）。
+
+- `GET /api/seed-products?q=&plantId=&type=&limit=50` — 検索（name LIKE / plant_id / type / brand）
+- `GET /api/seed-products/:id` — 単体取得
+- `POST /api/seed-products` — body: `{ pubkey, name, brand?, plantId, type, thumbnailUrl?, affiliateLinks? }`。誰でも登録可能（コミュニティ参加型マスタ）
+- `POST /api/seed-products/:id/use` — `use_count++` と `seed_product_users` への UPSERT で `user_count` を DISTINCT pubkey で集計
+
+「作物を植える」フローで `SeedProductPicker` から検索・選択・新規登録できます。選択された種・苗 ID は plantings.seed_product_id に保存されます。
+
 ## 設計参照
 
 詳細な設計メモはローカルの Agasteer 上にあります:

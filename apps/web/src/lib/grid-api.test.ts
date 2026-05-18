@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGrid,
   createPlanting,
+  createSeedProduct,
   deleteCell,
   deleteGrid,
   deletePlanting,
@@ -11,6 +12,7 @@ import {
   fetchCellRecords,
   fetchPlanting,
   fetchProfile,
+  fetchSeedProduct,
   fetchWateringDue,
   fetchWateringSettings,
   fetchWeather,
@@ -19,8 +21,10 @@ import {
   recordNutrient,
   recordPesticide,
   recordPh,
+  recordSeedProductUsage,
   recordWatering,
   searchPlants,
+  searchSeedProducts,
   setWateringInterval,
   updateGrid,
   updatePlanting,
@@ -662,5 +666,68 @@ describe("grid-api", () => {
     const r = await fetchWeather("存在しない地名", "2026-05-18");
     expect(r.record).toBeNull();
     expect(r.error).toBe("geocoding_failed");
+  });
+
+  // ---- seed products (Issue #34) ----
+
+  it("searchSeedProducts は GET /api/seed-products?q=&plantId=&type= を叩く", async () => {
+    mockFetch({ products: [{ id: 1, name: "トマト 桃太郎", brand: "タキイ" }] });
+    const res = await searchSeedProducts({ q: "桃太郎", plantId: 5, type: "seed" });
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(first().url.startsWith("/api/seed-products?")).toBe(true);
+    expect(first().url).toContain(`q=${encodeURIComponent("桃太郎")}`);
+    expect(first().url).toContain("plantId=5");
+    expect(first().url).toContain("type=seed");
+    expect(res).toHaveLength(1);
+  });
+
+  it("fetchSeedProduct は GET /api/seed-products/:id を叩く", async () => {
+    mockFetch({ product: { id: 42, name: "種袋", type: "seed" } });
+    const p = await fetchSeedProduct(42);
+    expect(first().url).toBe("/api/seed-products/42");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(p.id).toBe(42);
+  });
+
+  it("createSeedProduct は POST /api/seed-products に body を JSON で投げる", async () => {
+    mockFetch({
+      product: { id: 99, name: "ミニトマト", brand: "サカタ", plantId: 1, type: "seed" },
+      duplicated: false,
+    });
+    const r = await createSeedProduct({
+      pubkey: "p".repeat(64),
+      name: "ミニトマト",
+      brand: "サカタ",
+      plantId: 1,
+      type: "seed",
+      affiliateLinks: [{ shop: "Amazon", url: "https://example.com/a" }],
+    });
+    expect(first().url).toBe("/api/seed-products");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({
+      pubkey: "p".repeat(64),
+      name: "ミニトマト",
+      plantId: 1,
+      type: "seed",
+    });
+    expect(body.affiliateLinks).toEqual([{ shop: "Amazon", url: "https://example.com/a" }]);
+    expect(r.duplicated).toBe(false);
+    expect(r.product.id).toBe(99);
+  });
+
+  it("recordSeedProductUsage は POST /api/seed-products/:id/use を叩く", async () => {
+    mockFetch({
+      ok: true,
+      firstUse: true,
+      product: { id: 99, name: "ミニトマト", useCount: 1, userCount: 1 },
+    });
+    const r = await recordSeedProductUsage(99, "p".repeat(64));
+    expect(first().url).toBe("/api/seed-products/99/use");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "p".repeat(64) });
+    expect(r.firstUse).toBe(true);
+    expect(r.product.useCount).toBe(1);
   });
 });
