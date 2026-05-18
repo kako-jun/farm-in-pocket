@@ -95,6 +95,38 @@ main マージ後、GitHub Actions が以下を実行:
 
 実装は `nostr-tools` には依存せず、`@noble/secp256k1` v3 / `@noble/hashes` / `@scure/base` を直接使った最小実装（NIP-01 イベント署名 / NIP-19 nsec/npub / NIP-98 HTTP 認証）を `packages/shared/src/nostr/` に持っています。
 
+## レイアウト / デザイン
+
+全ページは `apps/web/src/layouts/MainLayout.astro` を共通レイアウトとして経由します（Issue #20）。MainLayout は HTML 骨格 / global CSS / PWA manifest 連携と、画面最下部のボトムナビ (`apps/web/src/components/BottomNav.astro`) を提供します。
+
+### ボトムナビ
+
+5 タブ固定の `position: fixed` ナビ（モバイル想定で高さ 64px）。アクティブ判定は `Astro.url.pathname` の startsWith。`/community/<npub>` のような動的サブパスも親タブが点灯します。
+
+| アイコン | ラベル | href | 用途 |
+|---|---|---|---|
+| 🌱 | マイ畑 | `/` | トップ / ポータル |
+| 🌾 | 畑編集 | `/grid` | グリッドエディタ |
+| 📅 | 記録 | `/record` | 作業ログ投稿 |
+| 🌍 | みんな | `/community` | コミュニティ一覧 / 他人の畑 |
+| 👤 | 設定 | `/settings` | アカウント・プライバシー |
+
+### スキュモーフィズム方針（控えめ）
+
+- 操作系はタッチ最適化のモダン UI のまま。ビジュアルの質感だけ「ほんのり」懐かしくする。
+- 過度なベタ塗りテクスチャや凹凸は付けない。業務アプリの使いやすさが最優先。
+- ボトムナビと主要 primary ボタンに、ごく薄いハイライト + ドロップシャドウの bevel を載せる程度。
+
+### デザイントークン
+
+`apps/web/src/styles/global.css` の `@theme` ブロックで Tailwind v4 のユーティリティとして定義しています。
+
+- `soil-50` / `soil-100` / `soil-200` / `soil-300` / `soil-500` / `soil-700` — オフホワイト〜薄茶のグラデ用。
+- `shadow-bevel-sm` / `shadow-bevel` / `shadow-deep` — 内側ハイライト + 外側影の bevel 用シャドウ。
+- `.safe-area-bottom` — iOS のホームバー / ノッチ用 `padding-bottom: env(safe-area-inset-bottom)`。
+
+PWA manifest の `theme_color` / `background_color` も同系統（落ち着いた緑 + オフホワイト soil）に揃えています。
+
 ## マイ畑（グリッド）
 
 `/grid` ページから「マイ畑」を編集できます（Phase 1 / Issue #13, #14）。

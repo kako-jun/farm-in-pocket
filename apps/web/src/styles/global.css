@@ -1,1 +1,38 @@
 @import "tailwindcss";
+
+/*
+ * Issue: kako-jun/farm-in-pocket#20
+ * スキュモーフィズム基本UI のためのデザイントークン。
+ * 操作はタッチ最適化のモダンUIのまま、ビジュアルの質感だけ控えめに懐かしくする方針。
+ * やりすぎ厳禁 — 業務アプリの使いやすさが優先で、bevel/shadow は添え物。
+ *
+ * Tailwind v4 の `@theme` ブロックで CSS 変数として宣言すると、
+ * `bg-soil-100` / `shadow-bevel` のような従来通りのユーティリティとして使える。
+ */
+@theme {
+  /* 土系カラー（落ち着いたオフホワイト〜薄茶のグラデ用） */
+  --color-soil-50: #faf7f2;
+  --color-soil-100: #f5ede0;
+  --color-soil-200: #e6d4b8;
+  --color-soil-300: #d4b888;
+  --color-soil-500: #a0834a;
+  --color-soil-700: #6e5320;
+
+  /* ベベル / 立体感シャドウ（控えめ） */
+  --shadow-bevel-sm: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-bevel: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 6px rgba(0, 0, 0, 0.1);
+  --shadow-deep: 0 4px 12px rgba(60, 40, 10, 0.12);
+}
+
+body {
+  /* オフホワイト soil 系のごく薄いグラデ。色味は地味目に。 */
+  background: linear-gradient(180deg, #fefcf7 0%, #f5ede0 100%);
+  min-height: 100vh;
+}
+
+/* iOS のホームバー / ノッチに対応するセーフエリア余白。
+ * ボトムナビが画面最下部に来るので、`padding-bottom` を env(...) から取って
+ * ナビ要素自体ではなく高さに加算する形にしている。 */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

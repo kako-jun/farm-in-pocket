@@ -1,0 +1,40 @@
+---
+// Issue: kako-jun/farm-in-pocket#20
+// 全ページ共通レイアウト。
+// - HTML 骨格 / meta / global CSS / PWA manifest 連携
+// - ボトムナビ固定配置
+// - main 領域には pb-20 を確保してナビ (h-16) と被らないようにする
+//
+// 各ページから:
+//   <MainLayout title="..." description="...">
+//     <slot 相当の中身 />
+//   </MainLayout>
+//
+// 互換: 既存ページの `<main class="min-h-screen ...">` ラッパーは各ページ側に残し、
+// ここでは body 直下に <slot /> を置くだけにする。背景は body 側でグラデを当てる。
+
+import BottomNav from "../components/BottomNav.astro";
+import "../styles/global.css";
+
+export interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  </head>
+  <body class="text-neutral-900">
+    <slot />
+    <BottomNav />
+  </body>
+</html>

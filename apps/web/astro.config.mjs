@@ -34,8 +34,11 @@ export default defineConfig({
         name: "Farm in Pocket (ポケ農)",
         short_name: "ポケ農",
         description: "ポケットの中の農業。牧場物語のリアル MMO な家庭菜園 SNS。",
-        theme_color: "#4ade80",
-        background_color: "#ffffff",
+        // Issue #20: スキュモーフィズム基本UIの基準色に合わせる。
+        // theme_color は emerald 系の落ち着いた緑（アクティブタブのライン色寄り）、
+        // background_color は global.css の body グラデの起点（オフホワイト soil）。
+        theme_color: "#5d8a3a",
+        background_color: "#fefcf7",
         display: "standalone",
         lang: "ja",
         icons: [

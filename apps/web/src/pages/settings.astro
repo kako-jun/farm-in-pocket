@@ -1,49 +1,36 @@
 ---
 import AccountSettings from "../components/AccountSettings";
 import PrivacySettings from "../components/PrivacySettings";
-import "../styles/global.css";
+import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。
 export const prerender = true;
 ---
 
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>設定 — Farm in Pocket (ポケ農)</title>
-  </head>
-  <body>
-    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-6 max-w-2xl mx-auto space-y-8">
-      <header class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">設定</h1>
-        <nav class="flex gap-3 text-sm">
-          <a class="text-emerald-700 hover:underline" href="/">ホーム</a>
-          <a class="text-emerald-700 hover:underline" href="/grid">マイ畑</a>
-          <a class="text-emerald-700 hover:underline" href="/record">記録</a>
-          <a class="text-emerald-700 hover:underline" href="/community">みんな</a>
-        </nav>
-      </header>
+<MainLayout title="設定 — Farm in Pocket (ポケ農)">
+  <main class="min-h-screen text-neutral-900 p-6 pb-24 max-w-2xl mx-auto space-y-8">
+    <header>
+      <h1 class="text-2xl font-bold">設定</h1>
+    </header>
 
-      <section class="space-y-3">
-        <h2 class="text-lg font-semibold">アカウント (Nostr 鍵)</h2>
-        <AccountSettings client:load />
-      </section>
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">アカウント (Nostr 鍵)</h2>
+      <AccountSettings client:load />
+    </section>
 
-      <section class="space-y-3">
-        <h2 class="text-lg font-semibold">プライバシー</h2>
-        <p class="text-sm text-neutral-600">
-          初回起動時に表示される注意事項を、いつでも再表示できます。
-        </p>
-        <PrivacySettings client:load />
-      </section>
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">プライバシー</h2>
+      <p class="text-sm text-neutral-600">
+        初回起動時に表示される注意事項を、いつでも再表示できます。
+      </p>
+      <PrivacySettings client:load />
+    </section>
 
-      <section class="space-y-3">
-        <h2 class="text-lg font-semibold">その他</h2>
-        <p class="text-sm text-neutral-500">
-          （その他の設定は今後追加）
-        </p>
-      </section>
-    </main>
-  </body>
-</html>
+    <section class="space-y-3">
+      <h2 class="text-lg font-semibold">その他</h2>
+      <p class="text-sm text-neutral-500">
+        （その他の設定は今後追加）
+      </p>
+    </section>
+  </main>
+</MainLayout>

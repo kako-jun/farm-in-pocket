@@ -132,7 +132,7 @@ export default function PrivacyNotice(): JSX.Element | null {
             disabled={!canProceed}
             data-testid="fip-privacy-proceed"
             aria-describedby={!scrolledToEnd ? "fip-privacy-proceed-help" : undefined}
-            className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500"
+            className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold shadow-bevel-sm transition-colors hover:bg-emerald-700 hover:shadow-bevel disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none"
           >
             進める
           </button>

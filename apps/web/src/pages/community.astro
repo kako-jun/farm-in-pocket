@@ -1,32 +1,21 @@
 ---
 import CommunityList from "../components/CommunityList";
-import "../styles/global.css";
+import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。動的な /community/[npub] だけ SSR。
 export const prerender = true;
 ---
 
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>みんな — Farm in Pocket (ポケ農)</title>
-    <meta name="description" content="ポケ農コミュニティの農家一覧。" />
-  </head>
-  <body>
-    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-4 max-w-3xl mx-auto space-y-6">
-      <header class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">🧑‍🌾 みんな</h1>
-        <nav class="flex gap-3 text-sm">
-          <a class="text-emerald-700 hover:underline" href="/">ホーム</a>
-          <a class="text-emerald-700 hover:underline" href="/grid">マイ畑</a>
-          <a class="text-emerald-700 hover:underline" href="/record">記録</a>
-          <a class="text-emerald-700 hover:underline" href="/settings">設定</a>
-        </nav>
-      </header>
-      <section>
-        <CommunityList client:load />
-      </section>
-    </main>
-  </body>
-</html>
+<MainLayout
+  title="みんな — Farm in Pocket (ポケ農)"
+  description="ポケ農コミュニティの農家一覧。"
+>
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-3xl mx-auto space-y-6">
+    <header>
+      <h1 class="text-2xl font-bold">🧑‍🌾 みんな</h1>
+    </header>
+    <section>
+      <CommunityList client:load />
+    </section>
+  </main>
+</MainLayout>

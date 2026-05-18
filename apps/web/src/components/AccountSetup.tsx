@@ -114,7 +114,7 @@ export default function AccountSetup(): JSX.Element | null {
                   type="button"
                   onClick={handleGenerate}
                   data-testid="fip-account-generate"
-                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold transition-colors hover:bg-emerald-700"
+                  className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold shadow-bevel-sm transition-colors hover:bg-emerald-700 hover:shadow-bevel"
                 >
                   新しい鍵を作る
                 </button>
@@ -177,7 +177,7 @@ export default function AccountSetup(): JSX.Element | null {
                   type="button"
                   onClick={handleImport}
                   data-testid="fip-account-import"
-                  className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold transition-colors hover:bg-emerald-700"
+                  className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold shadow-bevel-sm transition-colors hover:bg-emerald-700 hover:shadow-bevel"
                 >
                   インポート
                 </button>
@@ -205,7 +205,7 @@ export default function AccountSetup(): JSX.Element | null {
                 type="button"
                 onClick={() => setPhase("hidden")}
                 data-testid="fip-account-close"
-                className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold transition-colors hover:bg-emerald-700"
+                className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold shadow-bevel-sm transition-colors hover:bg-emerald-700 hover:shadow-bevel"
               >
                 始める
               </button>

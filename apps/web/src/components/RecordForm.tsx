@@ -405,7 +405,7 @@ export default function RecordForm(): JSX.Element {
             void handleSubmit();
           }}
           disabled={submitting || form.content.length === 0}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-bevel-sm hover:bg-emerald-700 hover:shadow-bevel disabled:opacity-50 disabled:shadow-none"
         >
           {submitting ? "投稿中..." : "投稿する"}
         </button>

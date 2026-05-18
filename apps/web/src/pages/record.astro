@@ -1,32 +1,21 @@
 ---
 import RecordForm from "../components/RecordForm";
-import "../styles/global.css";
+import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。
 export const prerender = true;
 ---
 
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>記録 — Farm in Pocket (ポケ農)</title>
-    <meta name="description" content="今日の作業（種まき・水やり・収穫など）を Nostr に投稿します。" />
-  </head>
-  <body>
-    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-4 max-w-2xl mx-auto space-y-6">
-      <header class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold">📝 記録</h1>
-        <nav class="flex gap-3 text-sm">
-          <a class="text-emerald-700 hover:underline" href="/">ホーム</a>
-          <a class="text-emerald-700 hover:underline" href="/grid">マイ畑</a>
-          <a class="text-emerald-700 hover:underline" href="/community">みんな</a>
-          <a class="text-emerald-700 hover:underline" href="/settings">設定</a>
-        </nav>
-      </header>
-      <section>
-        <RecordForm client:load />
-      </section>
-    </main>
-  </body>
-</html>
+<MainLayout
+  title="記録 — Farm in Pocket (ポケ農)"
+  description="今日の作業（種まき・水やり・収穫など）を Nostr に投稿します。"
+>
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-2xl mx-auto space-y-6">
+    <header>
+      <h1 class="text-2xl font-bold">📝 記録</h1>
+    </header>
+    <section>
+      <RecordForm client:load />
+    </section>
+  </main>
+</MainLayout>
