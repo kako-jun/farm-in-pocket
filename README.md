@@ -502,6 +502,19 @@ iot/             旧 Raspberry Pi 版                   (Phase 4 で再統合予
 
 施肥フォーム（`category=fertilizer_solid` / `fertilizer_liquid`）と農薬フォーム（`category=pesticide`）で `MaterialPicker` から資材を選択すると、`nutrient_records.material_id` / `pesticide_records.material_id` に保存され、`POST /api/materials/:id/use` が fire-and-forget で呼ばれて `use_count` / `user_count` が加算されます。
 
+### 希釈計算サポーター（Issue #36）
+
+`dilution` が定義された資材（液体肥料・農薬・除草剤など）を施肥／農薬フォームで選択すると、自動的に「希釈計算サポーター」が表示されます。
+
+- 計算式: `原液 ml = 作りたい量(L) × 1000 / ratio` / `水 ml = 作りたい量(L) × 1000 − 原液 ml`
+- 例: 1000倍液を 2L 作る → 原液 2ml + 水 1998ml
+- `dilution.ratios` に複数エントリがあるときは「目的」（通常散布 / 高濃度 など）を選べます
+- 計算結果は施肥／農薬フォームの `amount` (`ml` 単位) に自動セットされ、農薬は `pesticide_records.dilution_ratio` に保存されます
+- 施肥（`nutrient_records`）は `dilution_ratio` カラムを持たないため、note に「希釈 1000x」のタグが追記されます
+- `dilution` が無い資材を選んだ場合はサポーターは表示されず、通常の数量入力のままです
+
+計算ミスは薬害や効果不足の直接原因になるため、結果は emerald 系の大きな枠で目立つように表示しています。
+
 ## 設計参照
 
 詳細な設計メモはローカルの Agasteer 上にあります:
