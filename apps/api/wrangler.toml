@@ -9,6 +9,12 @@ enabled = true
 [vars]
 MYPACE_API_URL = "https://mypace.llll-ll.com"
 
+# Issue #39: Nostalgic Ranking 連携。
+# NOSTALGIC_TOKEN は秘密値なのでここには書かない。
+#   本番: wrangler secret put NOSTALGIC_TOKEN
+#   ローカル: apps/api/.dev.vars に NOSTALGIC_TOKEN=... を書く
+# NOSTALGIC_API_BASE は本番では未設定（既定の https://api.nostalgic.llll-ll.com を使う）。
+
 # D1 binding
 # 本番 DB は `wrangler d1 create farm-in-pocket` で作成し、
 # 出力された database_id を下の REPLACE_WITH_PROD_DATABASE_ID に貼り替えること。

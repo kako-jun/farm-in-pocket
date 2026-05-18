@@ -17,6 +17,7 @@ import {
   fetchPlantUsers,
   fetchPlanting,
   fetchProfile,
+  fetchRanking,
   fetchSeedProduct,
   fetchWateringDue,
   fetchWateringSettings,
@@ -37,6 +38,7 @@ import {
   updateGrid,
   updatePlanting,
   updateProfile,
+  voteRanking,
 } from "./grid-api";
 
 type FetchCall = {
@@ -896,5 +898,57 @@ describe("grid-api", () => {
     expect(first().url).toBe("/api/plants/1/users");
     expect(res).toHaveLength(2);
     expect(res[0]?.plantingCount).toBe(3);
+  });
+
+  // Issue #39: Nostalgic Ranking 連携
+  it("fetchRanking(slug) は GET /api/rankings/:slug?limit= を叩いて entries を返す", async () => {
+    mockFetch({
+      slug: "fun-to-grow",
+      entries: [
+        { rank: 1, plantId: 12, score: 7, plantName: "トマト" },
+        { rank: 2, plantId: 3, score: 4, plantName: "バジル" },
+      ],
+    });
+    const res = await fetchRanking("fun-to-grow", 20);
+    expect(first().url).toBe("/api/rankings/fun-to-grow?limit=20");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(res.slug).toBe("fun-to-grow");
+    if (res.slug !== "auto-difficulty") {
+      expect(res.entries).toHaveLength(2);
+      expect(res.entries[0]?.plantId).toBe(12);
+    }
+  });
+
+  it("fetchRanking('auto-difficulty') は DifficultyRecord[] 形式で返る", async () => {
+    mockFetch({
+      slug: "auto-difficulty",
+      entries: [
+        { rank: 1, plantId: 99, plantName: "難しい花", total: 10, failed: 7, failureRate: 0.7 },
+      ],
+    });
+    const res = await fetchRanking("auto-difficulty");
+    expect(first().url).toBe("/api/rankings/auto-difficulty");
+    expect(res.slug).toBe("auto-difficulty");
+    if (res.slug === "auto-difficulty") {
+      expect(res.entries[0]?.failureRate).toBeCloseTo(0.7);
+      expect(res.entries[0]?.failed).toBe(7);
+    }
+  });
+
+  it("voteRanking は POST /api/rankings/:slug/vote に { pubkey, plantId } を投げる", async () => {
+    mockFetch({
+      ok: true,
+      slug: "beginner-friendly",
+      plantId: 5,
+      alreadyVoted: false,
+      score: 3,
+    });
+    const res = await voteRanking("beginner-friendly", 5, "abc");
+    expect(first().url).toBe("/api/rankings/beginner-friendly/vote");
+    expect(first().init?.method).toBe("POST");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ pubkey: "abc", plantId: 5 });
+    expect(res.score).toBe(3);
+    expect(res.alreadyVoted).toBe(false);
   });
 });

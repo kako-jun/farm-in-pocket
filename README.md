@@ -404,6 +404,51 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 
 ナビゲーションのボトムバーは 5 タブのまま据え置きで、`/plants` には GridEditor の plant ピッカーや CellDetail のリンク経由でアクセスする設計です。今後、植物カタログそのものをタブに昇格させる場合はボトムナビ拡張を別 Issue で扱います。
 
+## ランキング
+
+Issue #39 で導入したテーマ別ランキング機能です。植物カタログを「順位」という別軸で楽しめます。
+
+### 5 つの投票テーマ
+
+ユーザーが好きな植物に投票して累計票数で並ぶランキング。1 ユーザー 1 植物 1 票（取り消し不可、ただし別の植物には別途投票できます）。
+
+| slug | テーマ |
+| --- | --- |
+| `fun-to-grow` | 育ててて楽しい作物 |
+| `beginner-friendly` | 初心者におすすめ |
+| `difficult` | 失敗しやすい |
+| `balcony-friendly` | ベランダで育てやすい |
+| `indoor-photogenic` | 室内映え |
+
+各テーマは [Nostalgic Ranking](https://nostalgic.llll-ll.com/) (`api.nostalgic.llll-ll.com/api/ranking`) でデータを保持します。ポケ農の Workers が server-side で proxy するため、クライアントは直接 Nostalgic を叩きません。
+
+- 投票 URL 識別子: `https://farm-in-pocket.llll-ll.com/rankings/{slug}`
+- Nostalgic 上の `name` は `p{plantId}` 形式（例: 植物 id = 1 なら `p1`）
+- `score` は累計投票数
+
+### 自動算出: 植物難易度ランキング
+
+`/rankings/auto-difficulty` は Nostalgic を使わず、D1 上の plantings 集計から自動計算します。`end_tag` が `died` / `disease` / `pest` / `failed` のいずれかなら「失敗」とみなし、(失敗数 / 総 planting 数) を失敗率としてランク付けします。投票口は持ちません。
+
+### 認可とトークン
+
+Nostalgic Ranking は url + owner token で管理します。token は **Cloudflare Workers Secret** に格納し、コードには絶対に書かないでください。
+
+- 本番投入: `cd apps/api && pnpm wrangler secret put NOSTALGIC_TOKEN`（kako-jun 統一値）
+- ローカル開発: `apps/api/.dev.vars` に `NOSTALGIC_TOKEN=...` を書く（`.dev.vars` は git 管理外）
+- token 未設定時は GET は空配列を返し、POST は D1 への投票記録だけ残してフロントを壊さない
+
+### エンドポイント
+
+- `GET  /api/rankings/:slug?limit=N` … 上位 N 件 + plant_name 付きで返す
+- `POST /api/rankings/:slug/vote`     body: `{ pubkey, plantId }` … 重複投票（D1 `ranking_votes` 主キー `(slug, pubkey, plant_id)`）を抑制した上で Nostalgic に submit
+
+### UI
+
+- `/rankings` … 全テーマ目次
+- `/rankings/:slug` … 各テーマのランキング 50 位まで
+- `/plants/:id` 詳細ページ下部 … 全 6 ランキングでのこの植物の順位 + 投票ボタン（鍵保有時のみ active）
+
 ## けいふんくん（マスコット）
 
 Phase 1 で導入したマスコットコンポーネント `KeifunMascot`（Issue #21）です。アイコン + 吹き出し + 音声読み上げ の最小 UI 雛形で、Phase 2 以降の LLM 連携（「けいふんくんに聞く」）の入口になります。

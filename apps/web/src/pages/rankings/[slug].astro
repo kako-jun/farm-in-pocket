@@ -1,0 +1,50 @@
+---
+// Issue: kako-jun/farm-in-pocket#39
+//
+// テーマ別ランキングページ。
+// 6 種類の slug (fun-to-grow / beginner-friendly / difficult / balcony-friendly /
+// indoor-photogenic / auto-difficulty) を SSG で吐く。
+// 投票テーマは Nostalgic Ranking、auto-difficulty は D1 集計（どちらも RankingList が吸収）。
+
+import RankingList from "../../components/RankingList";
+import MainLayout from "../../layouts/MainLayout.astro";
+import { RANKING_LABELS_JA, RANKING_SLUGS, isRankingSlug } from "@farm-in-pocket/shared";
+
+export const prerender = true;
+
+export function getStaticPaths() {
+  return RANKING_SLUGS.map((slug) => ({ params: { slug } }));
+}
+
+const { slug } = Astro.params;
+const valid = typeof slug === "string" && isRankingSlug(slug);
+if (!valid) {
+  Astro.response.status = 404;
+}
+const safeSlug = valid ? slug : RANKING_SLUGS[0];
+const label = valid ? RANKING_LABELS_JA[safeSlug] : "ランキング";
+---
+
+<MainLayout
+  title={`${label} — Farm in Pocket (ポケ農)`}
+  description={`ポケ農の運営テーマ別ランキング: ${label}`}
+>
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-3xl mx-auto space-y-6">
+    <header class="flex items-center gap-3">
+      <a href="/rankings" class="text-xs text-emerald-700 hover:underline">← ランキング一覧</a>
+      <h1 class="text-2xl font-bold">🏆 {label}</h1>
+    </header>
+    {valid ? (
+      <section class="rounded border border-neutral-200 bg-white p-4">
+        <RankingList slug={safeSlug} limit={50} client:load />
+      </section>
+    ) : (
+      <section class="rounded border border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-900">
+        <p class="font-semibold">無効なランキング slug です。</p>
+        <p class="mt-2">
+          <a class="text-emerald-700 hover:underline" href="/rankings">← ランキング一覧へ</a>
+        </p>
+      </section>
+    )}
+  </main>
+</MainLayout>
