@@ -30,6 +30,7 @@ import {
   daysSince,
   fadeOpacity,
   hasDilution,
+  todayJstYmd,
 } from "@farm-in-pocket/shared";
 import type { DilutionCalcResult } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
@@ -132,8 +133,10 @@ export interface CellDetailProps {
 
 type QuickFormKind = null | "nutrient" | "pesticide" | "ph";
 
+// retro #62: 旧 `new Date().toISOString().slice(0, 10)` は UTC 直行で JP 23 時台に日付が前後する。
+// shared の `todayJstYmd` に統一する。
 function todayYmd(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayJstYmd();
 }
 
 export default function CellDetail(props: CellDetailProps): JSX.Element {
@@ -1506,8 +1509,9 @@ const INTERVAL_PRESETS: { value: number | "custom" | "off"; label: string }[] = 
   { value: "off", label: "設定解除（リマインダーなし）" },
 ];
 
+// retro #62: JST 統一。
 function todayYmdLocal(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayJstYmd();
 }
 
 function daysOverdue(nextDueAt: string | null): number {

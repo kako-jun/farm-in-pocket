@@ -132,8 +132,12 @@ export const WORK_RECORD_MAX_CONTENT_LENGTH = 280;
 // 養分投入タイムライン (NutrientTimelineChart) の点・線の色。
 // nutrient_type ごとに段（縦軸位置）を変えるが、色の正本もここに固定する。
 // 同じ色マップを将来 CellDetail の履歴アイコン色などで再利用できるよう shared に置く。
+//
+// retro #63: 型を `Record<string, string>` から `Record<NutrientType, string>` に絞り、
+// NutrientType の値追加時にコンパイラが未定義キーを検出するようにする。
+import type { NutrientType } from "./db";
 
-export const NUTRIENT_COLORS: Record<string, string> = {
+export const NUTRIENT_COLORS: Record<NutrientType, string> = {
   nitrogen: "#16a34a", // 緑（葉物の窒素感）
   phosphorus: "#dc2626", // 赤
   potassium: "#a855f7", // 紫

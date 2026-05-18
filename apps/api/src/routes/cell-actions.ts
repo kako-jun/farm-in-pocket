@@ -18,6 +18,7 @@ import type {
   PhRecord,
   Season,
 } from "@farm-in-pocket/shared";
+import { isValidYmdString, todayJstYmd } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import { requireGridOwner } from "../lib/auth";
 
@@ -163,16 +164,22 @@ app.post("/:gridId/cells/:x/:y/nutrient", async (c) => {
     return c.json({ error: "invalid nutrientType" }, 400);
   }
 
+  // retro #63: appliedAt の日付検証。文字列が来たら "YYYY-MM-DD" 形式 (月/日範囲を含む) を満たすこと。
+  // 省略時は JST の今日。UTC 直行だと日付が前後する。
+  if (body.appliedAt !== undefined && !isValidYmdString(body.appliedAt)) {
+    return c.json({ error: "invalid appliedAt (expect YYYY-MM-DD)" }, 400);
+  }
+
   const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
   if (cellId == null) {
     return c.json({ error: "cell not found. configure container/soil first." }, 404);
   }
 
-  // appliedAt: ISO 文字列。省略時は now()
+  // appliedAt: YYYY-MM-DD。省略時は JST の今日。
   const appliedAt =
     typeof body.appliedAt === "string" && body.appliedAt.length > 0
       ? body.appliedAt
-      : new Date().toISOString();
+      : todayJstYmd();
   const amount =
     typeof body.amount === "number" && Number.isFinite(body.amount) ? body.amount : null;
   const amountUnit = typeof body.amountUnit === "string" ? body.amountUnit : null;
@@ -225,6 +232,11 @@ app.post("/:gridId/cells/:x/:y/pesticide", async (c) => {
     return c.json({ error: "invalid pesticideType" }, 400);
   }
 
+  // retro #63: appliedAt の日付検証。文字列が来たら "YYYY-MM-DD" 形式 (月/日範囲を含む) を満たすこと。
+  if (body.appliedAt !== undefined && !isValidYmdString(body.appliedAt)) {
+    return c.json({ error: "invalid appliedAt (expect YYYY-MM-DD)" }, 400);
+  }
+
   const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
   if (cellId == null) {
     return c.json({ error: "cell not found. configure container/soil first." }, 404);
@@ -233,7 +245,7 @@ app.post("/:gridId/cells/:x/:y/pesticide", async (c) => {
   const appliedAt =
     typeof body.appliedAt === "string" && body.appliedAt.length > 0
       ? body.appliedAt
-      : new Date().toISOString();
+      : todayJstYmd();
   const amount =
     typeof body.amount === "number" && Number.isFinite(body.amount) ? body.amount : null;
   const amountUnit = typeof body.amountUnit === "string" ? body.amountUnit : null;
@@ -410,16 +422,21 @@ app.post("/:gridId/cells/:x/:y/ph", async (c) => {
     return c.json({ error: "value out of range (0-14)" }, 400);
   }
 
+  // retro #62: measuredAt の日付検証。"2026-13-99" のような壊れた値はここで弾く。
+  if (body.measuredAt !== undefined && !isValidYmdString(body.measuredAt)) {
+    return c.json({ error: "invalid measuredAt (expect YYYY-MM-DD)" }, 400);
+  }
+
   const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
   if (cellId == null) {
     return c.json({ error: "cell not found. configure container/soil first." }, 404);
   }
 
-  // measuredAt: 省略時は今日 (YYYY-MM-DD)
+  // measuredAt: 省略時は JST の今日 (YYYY-MM-DD)。サーバが UTC でも JP ユーザーの「今日」がズレない。
   const measuredAt =
     typeof body.measuredAt === "string" && body.measuredAt.length > 0
       ? body.measuredAt
-      : new Date().toISOString().slice(0, 10);
+      : todayJstYmd();
   const note = typeof body.note === "string" ? body.note : null;
 
   const ins = await c.env.DB.prepare(

@@ -1,4 +1,4 @@
-// PhTimelineChart: pH 測定値の時系列折れ線グラフ (Issue #24 + #26 fade 統一)
+// PhTimelineChart: pH 測定値の時系列折れ線グラフ (Issue #24 + #26 fade 統一 + retro #62 x 軸時系列)
 //
 // 設計方針:
 //   - 外部ライブラリ非依存。SVG だけで描く。バンドル軽量。Astro + React 19 と互換。
@@ -6,6 +6,8 @@
 //   - 古いデータほど点の opacity が低い → Issue #26 の fadeOpacity("ph") に統一。
 //     経過日数（now との差）から opacity を決め、index ベースの 0.35〜1.0 補間はやめる。
 //   - y 軸は pH 0-14 固定、4 / 7 / 10 にガイドライン
+//   - x 軸は **日付差ベース** (retro #62)。配列 index 等間隔だと「3 日間隔」と「30 日間隔」が
+//     視覚的に同じになり、時系列の意味が消える。1 点のみ・全点同日は中央に集める。
 //   - x 軸ラベルは最初・中央・最後の最大 3 点
 //   - データ 0 件なら placeholder「データなし」を表示
 //   - responsive: width 100% / viewBox
@@ -39,9 +41,23 @@ function valueToY(value: number, plotTop: number, plotBottom: number): number {
   return plotBottom - ratio * (plotBottom - plotTop);
 }
 
-function dateToX(index: number, total: number, plotLeft: number, plotRight: number): number {
-  if (total <= 1) return (plotLeft + plotRight) / 2;
-  return plotLeft + (index / (total - 1)) * (plotRight - plotLeft);
+// retro #62: 日付差ベースで x 座標を決める。
+// - data 0/1 件は呼び出し側で除外済み (1 件のみは中央に置きたいので span=0 経路で扱う)
+// - 全点同日 (span=0) も中央に集める
+function dateToXByMs(
+  ms: number,
+  minMs: number,
+  span: number,
+  plotLeft: number,
+  plotRight: number,
+): number {
+  if (span <= 0) return (plotLeft + plotRight) / 2;
+  return plotLeft + ((ms - minMs) / span) * (plotRight - plotLeft);
+}
+
+function parseDateMs(s: string): number {
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : 0;
 }
 
 /**
@@ -77,8 +93,14 @@ export default function PhTimelineChart(props: PhTimelineChartProps): JSX.Elemen
   const plotBottom = VB_H - VB_PADDING_BOTTOM;
 
   const total = data.length;
+  // retro #62: x 軸を日付差ベースにする。配列 index 等間隔だと「3 日差」と「30 日差」が同じに見え、
+  // 時系列の意味が崩れる。
+  const msList = data.map((p) => parseDateMs(p.date));
+  const minMs = msList.length > 0 ? Math.min(...msList) : 0;
+  const maxMs = msList.length > 0 ? Math.max(...msList) : 0;
+  const span = maxMs - minMs;
   const points = data.map((p, i) => ({
-    x: dateToX(i, total, plotLeft, plotRight),
+    x: dateToXByMs(msList[i] ?? 0, minMs, span, plotLeft, plotRight),
     y: valueToY(p.value, plotTop, plotBottom),
     opacity: opacityFor(p.date),
     date: p.date,

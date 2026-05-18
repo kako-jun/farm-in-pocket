@@ -127,14 +127,9 @@ type ModalKind = "detail" | "menu" | "container" | "soil" | "plant" | "seed-prod
 // lastFertilizedAt / lastPesticideAt が記録されていれば常にバッジを出し、
 // 経過日数を opacity で表現する（fadeOpacity）。
 // 「もう古いから消す」のではなく「だいぶ前にやったな」を視覚的に残すデザイン。
-
-function daysAgo(iso: string | null): number | null {
-  if (!iso) return null;
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return null;
-  const diffMs = Date.now() - t;
-  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
-}
+//
+// retro #64: 旧ローカル `daysAgo` (null 返却) は shared の `daysSince` (Number.POSITIVE_INFINITY 返却)
+// に統一する。null 互換 (= バッジを出さない判定) は `Number.isFinite` で揃える。
 
 /** 経過日数を人間に分かりやすい aria-label 用の文字列に変換する。 */
 function ageLabel(days: number): string {
@@ -949,8 +944,11 @@ export default function GridEditor(): JSX.Element {
             const hasPlanting = cell?.currentPlantingId != null;
             // Issue #26: 施肥 / 農薬バッジは記録があれば常に表示し、
             // 経過日数に応じた opacity でフェードさせる（だいぶ前=ほぼ透明グレー）。
-            const fertilizedDays = daysAgo(cell?.lastFertilizedAt ?? null);
-            const pesticideDays = daysAgo(cell?.lastPesticideAt ?? null);
+            // retro #64: shared の daysSince() に統一。POSITIVE_INFINITY は null 互換に倒す。
+            const fertilizedRaw = daysSince(cell?.lastFertilizedAt ?? null);
+            const pesticideRaw = daysSince(cell?.lastPesticideAt ?? null);
+            const fertilizedDays = Number.isFinite(fertilizedRaw) ? fertilizedRaw : null;
+            const pesticideDays = Number.isFinite(pesticideRaw) ? pesticideRaw : null;
             const showFertilizeBadge = !isVoid && fertilizedDays !== null;
             const showPesticideBadge = !isVoid && pesticideDays !== null;
             const fertilizeOpacity =

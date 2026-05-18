@@ -72,6 +72,19 @@ describe("NutrientTimelineChart", () => {
     expect(p2.getAttribute("data-type")).toBe("potassium");
   });
 
+  it("retro #62/63: 同日同種類の点が 2 つあっても両方とも circle として描画される", () => {
+    const data = [
+      makeRecord({ id: 1, appliedAt: "2026-05-17", nutrientType: "nitrogen", amount: 10 }),
+      makeRecord({ id: 2, appliedAt: "2026-05-17", nutrientType: "nitrogen", amount: 20 }),
+    ];
+    render(<NutrientTimelineChart data={data} />);
+    // 2 点とも描画される (同日でも別 circle として出る)
+    expect(screen.getByTestId("fip-nutrient-chart-point-0")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-nutrient-chart-point-1")).toBeInTheDocument();
+    // 同 type で 2 点なので線が引かれる
+    expect(screen.getByTestId("fip-nutrient-chart-line-nitrogen")).toBeInTheDocument();
+  });
+
   it("同種類の点が複数あれば線で繋がる (path 描画)", () => {
     const data = [
       makeRecord({ id: 1, appliedAt: "2026-04-01", nutrientType: "nitrogen", amount: 30 }),
