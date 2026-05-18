@@ -1,0 +1,73 @@
+---
+// 他人の畑ページ。
+//
+// Issue: kako-jun/farm-in-pocket#19
+// `/community/<npub>` を SSR で受ける。astro.config.mjs が output: "server" のため、
+// このページだけ prerender=false で Cloudflare Pages Functions として動く。
+// 静的ページ (`/`, `/grid`, `/record`, `/settings`, `/community`) は各々 prerender=true。
+//
+// バリデーション: npub は bech32 (`npub1...`)。簡易な prefix チェックだけここで行い、
+// 厳密な decode は OtherFarmPage コンポーネント内 (fetchOtherFarm) で実施する。
+// SSR の段階で 404 にするのは過剰、クライアントで「見つかりません」と表示する方が
+// ナビゲーション一貫性も保たれる。
+
+import OtherFarmPage from "../../components/OtherFarmPage";
+import "../../styles/global.css";
+
+export const prerender = false;
+
+const { npub } = Astro.params;
+const npubStr = typeof npub === "string" ? npub : "";
+const looksLikeNpub = /^npub1[0-9a-z]+$/.test(npubStr);
+
+// 無効な npub の場合は HTTP 404 を返す（クライアント側のエラー表示は維持して
+// 直接 URL を踏んだユーザーへの UX も両立する）。
+if (!looksLikeNpub) {
+  Astro.response.status = 404;
+}
+
+const title = looksLikeNpub
+  ? `${npubStr.slice(0, 12)}... の畑 — Farm in Pocket (ポケ農)`
+  : "他人の畑 — Farm in Pocket (ポケ農)";
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content="ポケ農コミュニティの他の農家の畑ページ。" />
+  </head>
+  <body>
+    <main class="min-h-screen bg-neutral-50 text-neutral-900 p-4 max-w-3xl mx-auto space-y-6">
+      <header class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold">🧑‍🌾 みんなの畑</h1>
+        <nav class="flex gap-3 text-sm">
+          <a class="text-emerald-700 hover:underline" href="/">ホーム</a>
+          <a class="text-emerald-700 hover:underline" href="/grid">マイ畑</a>
+          <a class="text-emerald-700 hover:underline" href="/record">記録</a>
+          <a class="text-emerald-700 hover:underline" href="/community">みんな</a>
+          <a class="text-emerald-700 hover:underline" href="/settings">設定</a>
+        </nav>
+      </header>
+      <section>
+        {
+          looksLikeNpub ? (
+            <OtherFarmPage npub={npubStr} client:load />
+          ) : (
+            <div
+              class="rounded border border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-900"
+              data-testid="other-invalid-npub"
+            >
+              <p class="font-semibold">無効な npub です。</p>
+              <p class="mt-2 text-neutral-600">URL に含まれる `npub1...` を確認してください。</p>
+              <p class="mt-4">
+                <a class="text-emerald-700 hover:underline" href="/community">← みんなへ戻る</a>
+              </p>
+            </div>
+          )
+        }
+      </section>
+    </main>
+  </body>
+</html>
