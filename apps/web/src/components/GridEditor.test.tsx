@@ -742,4 +742,77 @@ describe("GridEditor", () => {
     // 90 日超でもバッジ自体は消さず、ほぼ透明で残す仕様
     expect(badge).toBeInTheDocument();
   });
+
+  // -------------------------------------------------------------------------
+  // Issue #40: グリッドアーカイブ / アーカイブ表示トグル
+  // -------------------------------------------------------------------------
+
+  it("Issue #40: ManagePanel の「凍結」ボタンを押すと PATCH /api/grids/:id に archive: true が送られる", async () => {
+    seedThreeGrids();
+    routes.push({
+      match: (u, i) => u.endsWith("/api/grids/g2") && i?.method === "PATCH",
+      response: {
+        grid: { ...gridFixture({ id: "g2", sortOrder: 1 }), archivedAt: "2026-05-18T00:00:00Z" },
+        cropHistoryResetWarning: false,
+      },
+    });
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await screen.findByTestId("fip-grid-view");
+    await user.click(screen.getByTestId("fip-grid-tab-manage"));
+    await user.click(screen.getByTestId("fip-grid-manage-archive-g2"));
+    await waitFor(() => {
+      const patch = fetchCalls.find((c) => c.method === "PATCH" && c.url.endsWith("/api/grids/g2"));
+      expect(patch).toBeDefined();
+      const body = JSON.parse(patch?.body ?? "{}");
+      expect(body.archive).toBe(true);
+    });
+  });
+
+  it("Issue #40: 「凍結中を表示」トグルで GET /api/grids に includeArchived=true が乗る", async () => {
+    seedSecretKey();
+    // 初回 GET: includeArchived 無し → アクティブ 1 件
+    // 2 回目 GET: includeArchived=true → アクティブ + アーカイブ 2 件
+    routes.push({
+      match: (u, i) =>
+        u.includes("/api/grids?") &&
+        !u.includes("includeArchived=true") &&
+        (i?.method ?? "GET") === "GET",
+      response: { grids: [gridFixture({ id: "g1", name: "現役", sortOrder: 0 })] },
+    });
+    routes.push({
+      match: (u, i) =>
+        u.includes("/api/grids?") &&
+        u.includes("includeArchived=true") &&
+        (i?.method ?? "GET") === "GET",
+      response: {
+        grids: [
+          gridFixture({ id: "g1", name: "現役", sortOrder: 0 }),
+          {
+            ...gridFixture({ id: "g2", name: "去年の畑", sortOrder: 1 }),
+            archivedAt: "2025-12-01T00:00:00Z",
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    render(<GridEditor />);
+    await screen.findByTestId("fip-grid-view");
+    // 初期状態では g2 タブは無い
+    expect(screen.queryByTestId("fip-grid-tab-g2")).not.toBeInTheDocument();
+    // ・・・ → 凍結中を表示
+    await user.click(screen.getByTestId("fip-grid-tab-manage"));
+    await user.click(screen.getByTestId("fip-grid-manage-toggle-archived"));
+    // 再 GET が走り g2 タブが現れる
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-grid-tab-g2")).toBeInTheDocument();
+    });
+    // タブには「📦」の凍結マーカー（data-archived="1"）が付く
+    expect(screen.getByTestId("fip-grid-tab-g2").getAttribute("data-archived")).toBe("1");
+    // includeArchived=true が乗った GET が少なくとも 1 回ある
+    const archivedGet = fetchCalls.find(
+      (c) => c.method === "GET" && c.url.includes("includeArchived=true"),
+    );
+    expect(archivedGet).toBeDefined();
+  });
 });

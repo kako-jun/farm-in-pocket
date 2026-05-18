@@ -67,6 +67,7 @@ function gridFixture(): GridRecord {
     sizeX: 3,
     sizeY: 3,
     sortOrder: 0,
+    archivedAt: null,
     cells: [],
   };
 }

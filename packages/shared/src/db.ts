@@ -354,6 +354,20 @@ export function isOutdoorEnvironment(env: GridEnvironment): boolean {
   return env !== "indoor" && env !== "greenhouse";
 }
 
+/**
+ * Issue #40: グリッド統計（summary=true で取得した場合に詰める）。
+ * - cellCount     : cells テーブルに登録済みのセル総数（VOID も含む）
+ * - plantingCount : 現在 planting が紐付いているセル数（current_planting_id IS NOT NULL）
+ * - voidCount     : container_type='void' のセル数
+ * - cellsByContainer : container_type ごとの件数（NULL は集計しない）
+ */
+export interface GridSummary {
+  cellCount: number;
+  plantingCount: number;
+  voidCount: number;
+  cellsByContainer: Record<string, number>;
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;
@@ -364,6 +378,10 @@ export interface GridRecord {
   sizeY: number;
   sortOrder: number;
   cells: CellRecord[];
+  /** Issue #40: アーカイブ（凍結）タイムスタンプ。NULL ならアクティブ。 */
+  archivedAt: string | null;
+  /** Issue #40: summary=true 指定時のみ詰める。通常一覧では undefined。 */
+  summary?: GridSummary;
 }
 
 // ============================================================================
