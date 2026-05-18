@@ -1,0 +1,53 @@
+---
+// 植物詳細ページ。
+//
+// Issue: kako-jun/farm-in-pocket#38
+// `/plants/:id` を SSR で受ける（astro.config.mjs は output: "server"）。
+// id バリデーション（数値かどうか）だけここで行い、本体は React island に委譲する。
+// 404 / 取得失敗の表示はコンポーネント側 (PlantDetail) で処理する方が
+// ナビゲーション一貫性が保てるので、無効 id のときだけ HTTP 404 を返して
+// あとはクライアントに任せる。
+
+import PlantDetail from "../../components/PlantDetail";
+import MainLayout from "../../layouts/MainLayout.astro";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const idNum = Number(id);
+const valid = Number.isInteger(idNum) && idNum > 0;
+if (!valid) {
+  Astro.response.status = 404;
+}
+
+const title = valid
+  ? `植物 #${idNum} — Farm in Pocket (ポケ農)`
+  : "植物が見つかりません — Farm in Pocket (ポケ農)";
+---
+
+<MainLayout title={title} description="ポケ農の植物マスター詳細ページ。">
+  <main class="min-h-screen text-neutral-900 p-4 pb-24 max-w-3xl mx-auto space-y-6">
+    <header class="flex items-center gap-3">
+      <a href="/plants" class="text-xs text-emerald-700 hover:underline">← 一覧</a>
+      <h1 class="text-2xl font-bold">🌿 植物詳細</h1>
+    </header>
+    <section>
+      {
+        valid ? (
+          <PlantDetail plantId={idNum} client:load />
+        ) : (
+          <div
+            class="rounded border border-amber-300 bg-amber-50 p-6 text-center text-sm text-amber-900"
+            data-testid="fip-plant-detail-invalid-id"
+          >
+            <p class="font-semibold">無効な植物 ID です。</p>
+            <p class="mt-2 text-neutral-600">URL を確認してください。</p>
+            <p class="mt-4">
+              <a class="text-emerald-700 hover:underline" href="/plants">← 一覧へ戻る</a>
+            </p>
+          </div>
+        )
+      }
+    </section>
+  </main>
+</MainLayout>

@@ -19,7 +19,9 @@ import type {
   PesticideRecord,
   PesticideType,
   PhRecord,
+  PlantDetail,
   PlantSummary,
+  PlantUserRecord,
   PlantingEndTag,
   PlantingRecord,
   PlantingState,
@@ -158,6 +160,66 @@ export async function searchPlants(q: string): Promise<PlantSummary[]> {
     url(`/api/plants?q=${encodeURIComponent(q)}`),
   );
   return data.plants;
+}
+
+/**
+ * Issue #38: `/plants` 一覧ページ用の拡張検索。
+ *
+ * 既存 `searchPlants(q)` を残しつつ、tag / category / family / sort / limit を受け取る
+ * 新ラッパーを足す。フィールドはすべて任意で、未指定なら API 側の既定値で動く。
+ */
+export interface SearchPlantsParams {
+  q?: string;
+  family?: string;
+  category?: string;
+  tag?: string;
+  sort?: "name" | "id";
+  limit?: number;
+}
+
+export async function searchPlantsAdvanced(
+  params: SearchPlantsParams = {},
+): Promise<PlantSummary[]> {
+  const sp = new URLSearchParams();
+  if (params.q && params.q.length > 0) sp.set("q", params.q);
+  if (params.family && params.family.length > 0) sp.set("family", params.family);
+  if (params.category && params.category.length > 0) sp.set("category", params.category);
+  if (params.tag && params.tag.length > 0) sp.set("tag", params.tag);
+  if (params.sort) sp.set("sort", params.sort);
+  if (typeof params.limit === "number") sp.set("limit", String(params.limit));
+  const qs = sp.toString();
+  const data = await jsonFetch<{ plants: PlantSummary[] }>(
+    url(`/api/plants${qs.length > 0 ? `?${qs}` : ""}`),
+  );
+  return data.plants;
+}
+
+/**
+ * Issue #38: 植物詳細を取得する（description / tags / genus / thumbnail を含む）。
+ * 404 のときは Error が throw される。
+ */
+export async function fetchPlant(id: number): Promise<PlantDetail> {
+  const data = await jsonFetch<{ plant: PlantDetail }>(url(`/api/plants/${id}`));
+  return data.plant;
+}
+
+/**
+ * Issue #38: その plant に紐付く seed_products（人気順、最大 50）を返す。
+ */
+export async function fetchPlantSeedProducts(id: number): Promise<SeedProductRecord[]> {
+  const data = await jsonFetch<{ products: SeedProductRecord[] }>(
+    url(`/api/plants/${id}/seed-products`),
+  );
+  return data.products;
+}
+
+/**
+ * Issue #38: その plant を「育てている／いた」ユーザー一覧（lastPlantedAt 降順、最大 100）を返す。
+ * mypace の display_name / picture は別途呼び出し側で bulk 取得する想定。
+ */
+export async function fetchPlantUsers(id: number): Promise<PlantUserRecord[]> {
+  const data = await jsonFetch<{ users: PlantUserRecord[] }>(url(`/api/plants/${id}/users`));
+  return data.users;
 }
 
 // ---- plantings ------------------------------------------------------------

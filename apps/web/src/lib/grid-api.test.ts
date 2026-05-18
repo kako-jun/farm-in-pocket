@@ -12,6 +12,9 @@ import {
   fetchCellPh,
   fetchCellRecords,
   fetchMaterial,
+  fetchPlant,
+  fetchPlantSeedProducts,
+  fetchPlantUsers,
   fetchPlanting,
   fetchProfile,
   fetchSeedProduct,
@@ -28,6 +31,7 @@ import {
   recordWatering,
   searchMaterials,
   searchPlants,
+  searchPlantsAdvanced,
   searchSeedProducts,
   setWateringInterval,
   updateGrid,
@@ -811,5 +815,86 @@ describe("grid-api", () => {
     expect(body).toEqual({ pubkey: "p".repeat(64) });
     expect(r.firstUse).toBe(false);
     expect(r.material.useCount).toBe(3);
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #38: 植物マスターページ
+  // -------------------------------------------------------------------------
+
+  it("searchPlantsAdvanced は GET /api/plants?<filters> を組み立てる", async () => {
+    mockFetch({
+      plants: [
+        { id: 1, name: "トマト", nameEn: "Tomato", family: "ナス科", category: "vegetable" },
+      ],
+    });
+    const res = await searchPlantsAdvanced({
+      q: "tomato",
+      category: "vegetable",
+      family: "ナス科",
+      tag: "夏野菜",
+      sort: "name",
+      limit: 50,
+    });
+    expect(first().url).toBe(
+      `/api/plants?q=tomato&family=${encodeURIComponent("ナス科")}&category=vegetable&tag=${encodeURIComponent("夏野菜")}&sort=name&limit=50`,
+    );
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(res).toHaveLength(1);
+  });
+
+  it("fetchPlant は GET /api/plants/:id を叩いて PlantDetail を返す", async () => {
+    mockFetch({
+      plant: {
+        id: 7,
+        name: "バジル",
+        nameEn: "Basil",
+        family: "シソ科",
+        category: "herb",
+        genus: "Ocimum",
+        tags: ["ハーブ", "夏"],
+        description: "イタリア料理に欠かせないハーブ。",
+        thumbnailUrl: null,
+      },
+    });
+    const res = await fetchPlant(7);
+    expect(first().url).toBe("/api/plants/7");
+    expect(res.tags).toEqual(["ハーブ", "夏"]);
+    expect(res.genus).toBe("Ocimum");
+  });
+
+  it("fetchPlantSeedProducts は GET /api/plants/:id/seed-products を叩く", async () => {
+    mockFetch({
+      products: [
+        {
+          id: 10,
+          name: "甘いトマトの種",
+          brand: "サカタ",
+          plantId: 1,
+          plantName: "トマト",
+          type: "seed",
+          thumbnailUrl: null,
+          affiliateLinks: null,
+          useCount: 5,
+          userCount: 3,
+        },
+      ],
+    });
+    const res = await fetchPlantSeedProducts(1);
+    expect(first().url).toBe("/api/plants/1/seed-products");
+    expect(res).toHaveLength(1);
+    expect(res[0]?.plantId).toBe(1);
+  });
+
+  it("fetchPlantUsers は GET /api/plants/:id/users を叩いてユーザー一覧を返す", async () => {
+    mockFetch({
+      users: [
+        { pubkey: "a".repeat(64), plantingCount: 3, lastPlantedAt: "2026-04-01" },
+        { pubkey: "b".repeat(64), plantingCount: 1, lastPlantedAt: "2026-03-15" },
+      ],
+    });
+    const res = await fetchPlantUsers(1);
+    expect(first().url).toBe("/api/plants/1/users");
+    expect(res).toHaveLength(2);
+    expect(res[0]?.plantingCount).toBe(3);
   });
 });

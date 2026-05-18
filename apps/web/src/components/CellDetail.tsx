@@ -1382,6 +1382,14 @@ function PlantingPanel(props: {
           {stateLabel}
         </span>
         {plantName && <span className="text-sm font-medium text-emerald-800">🌱 {plantName}</span>}
+        {/* Issue #38: 植物マスターページへの導線 */}
+        <a
+          href={`/plants/${planting.plantId}`}
+          data-testid="fip-cell-detail-plant-detail-link"
+          className="text-[10px] text-emerald-700 hover:underline"
+        >
+          詳細を見る →
+        </a>
       </div>
 
       {/* 日付情報 */}
