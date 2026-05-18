@@ -17,6 +17,15 @@ export default defineConfig({
   adapter: cloudflare({
     imageService: "passthrough",
   }),
+  // Issue #19: session API (Astro.session) は使っていない。
+  // 既定の @astrojs/cloudflare は SESSION KV binding を要求する driver を強制注入してくるが、
+  // 明示的に memory driver を指定しておけば KV binding 要求は出なくなる
+  // （session?.driver が設定済みなら adapter 側の "Enabling sessions with Cloudflare KV..."
+  // ロジックがスキップされる）。
+  // 参考: https://docs.astro.build/en/guides/sessions/
+  session: {
+    driver: "memory",
+  },
   integrations: [
     react(),
     AstroPWA({

@@ -20,6 +20,12 @@ const { npub } = Astro.params;
 const npubStr = typeof npub === "string" ? npub : "";
 const looksLikeNpub = /^npub1[0-9a-z]+$/.test(npubStr);
 
+// 無効な npub の場合は HTTP 404 を返す（クライアント側のエラー表示は維持して
+// 直接 URL を踏んだユーザーへの UX も両立する）。
+if (!looksLikeNpub) {
+  Astro.response.status = 404;
+}
+
 const title = looksLikeNpub
   ? `${npubStr.slice(0, 12)}... の畑 — Farm in Pocket (ポケ農)`
   : "他人の畑 — Farm in Pocket (ポケ農)";

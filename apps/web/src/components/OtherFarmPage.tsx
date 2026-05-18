@@ -29,7 +29,7 @@ type Status =
 type FollowState =
   | { kind: "no-key" }
   | { kind: "loading" }
-  | { kind: "ready"; following: boolean }
+  | { kind: "ready"; following: boolean; error?: string }
   | { kind: "saving" };
 
 function isKnownAction(s: string | null): s is FarmAction {
@@ -184,24 +184,27 @@ export default function OtherFarmPage({ npub }: Props): JSX.Element {
   const name = displayName(data);
   const pic = picture(data);
   const ban = banner(data);
-  const about = typeof data.profile?.about === "string" ? data.profile.about : "";
+  const aboutRaw = typeof data.profile?.about === "string" ? data.profile.about : "";
+  const about = aboutRaw.trim();
 
   const handleFollowToggle = async () => {
     if (follow.kind !== "ready") return;
     const kp = getMyKeyPair();
     if (kp === null) return;
+    const previousFollowing = follow.following;
     setFollow({ kind: "saving" });
     try {
-      if (follow.following) {
+      if (previousFollowing) {
         await unfollowPubkey(kp.secretKey, data.pubkey);
         setFollow({ kind: "ready", following: false });
       } else {
         await followPubkey(kp.secretKey, data.pubkey);
         setFollow({ kind: "ready", following: true });
       }
-    } catch {
-      // 失敗時は元の状態に戻す
-      setFollow({ kind: "ready", following: follow.following });
+    } catch (e: unknown) {
+      // 失敗時は元の状態に戻し、エラー文言を表示する（再クリックで再試行可能）
+      const message = e instanceof Error ? e.message : String(e);
+      setFollow({ kind: "ready", following: previousFollowing, error: message });
     }
   };
 
@@ -243,7 +246,7 @@ export default function OtherFarmPage({ npub }: Props): JSX.Element {
               </h2>
               <FollowButton state={follow} onToggle={handleFollowToggle} />
             </div>
-            {about.length > 0 && (
+            {about.trim().length > 0 && (
               <p
                 className="mt-2 whitespace-pre-wrap break-words text-sm text-neutral-700"
                 data-testid="other-about"
@@ -326,9 +329,9 @@ export default function OtherFarmPage({ npub }: Props): JSX.Element {
                       className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4"
                       data-testid="other-timeline-images"
                     >
-                      {images.map((url) => (
+                      {images.map((url, idx) => (
                         <img
-                          key={url}
+                          key={`${event.id}-${idx}`}
                           src={url}
                           alt=""
                           loading="lazy"
@@ -413,18 +416,29 @@ function FollowButton({
   }
   // ready
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={
-        state.following
-          ? "rounded border border-emerald-600 bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-700"
-          : "rounded border border-emerald-600 bg-white px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
-      }
-      data-testid="other-follow-btn"
-      data-state={state.following ? "following" : "not-following"}
-    >
-      {state.following ? "フォロー中" : "フォロー"}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={
+          state.following
+            ? "rounded border border-emerald-600 bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-700"
+            : "rounded border border-emerald-600 bg-white px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+        }
+        data-testid="other-follow-btn"
+        data-state={state.following ? "following" : "not-following"}
+        data-error={state.error ? "true" : undefined}
+      >
+        {state.following ? "フォロー中" : "フォロー"}
+      </button>
+      {state.error && (
+        <p
+          className="max-w-[10rem] text-right text-[10px] text-rose-600"
+          data-testid="other-follow-error"
+        >
+          失敗しました。再試行してください。
+        </p>
+      )}
+    </div>
   );
 }
