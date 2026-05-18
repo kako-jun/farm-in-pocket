@@ -47,6 +47,9 @@ export default function PhotoPicker({
     // 同じファイルを連続選択しても change が発火するように input を即クリア
     if (inputRef.current) inputRef.current.value = "";
     if (files.length === 0) return;
+    // 二重実行ガード: アップロード進行中なら新しい選択を黙って無視
+    // （ボタンは disabled で守っているが、キーボード/プログラム経路を塞ぐ）
+    if (uploading) return;
 
     setWarning(null);
     setErrors([]);
