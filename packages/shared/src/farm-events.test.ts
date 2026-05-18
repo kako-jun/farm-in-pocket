@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildWorkRecordEvent } from "./farm-events";
 
 describe("buildWorkRecordEvent", () => {
-  it("kind=1 / content / 必須タグ（t=farm-in-pocket, farm-action）が入る", () => {
+  it("kind=1 / content / 必須タグ（t=mypace, t=farm-in-pocket, farm-action）が入る", () => {
     const ev = buildWorkRecordEvent({
       action: "watering",
       content: "朝の水やり完了",
@@ -10,11 +10,26 @@ describe("buildWorkRecordEvent", () => {
     });
     expect(ev.kind).toBe(1);
     expect(ev.content).toBe("朝の水やり完了");
+    expect(ev.tags).toContainEqual(["t", "mypace"]);
     expect(ev.tags).toContainEqual(["t", "farm-in-pocket"]);
     expect(ev.tags).toContainEqual(["farm-action", "watering"]);
-    // 並びは t / farm-action が先頭から
-    expect(ev.tags[0]).toEqual(["t", "farm-in-pocket"]);
-    expect(ev.tags[1]).toEqual(["farm-action", "watering"]);
+    // 並びは t=mypace / t=farm-in-pocket / farm-action の順
+    expect(ev.tags[0]).toEqual(["t", "mypace"]);
+    expect(ev.tags[1]).toEqual(["t", "farm-in-pocket"]);
+    expect(ev.tags[2]).toEqual(["farm-action", "watering"]);
+  });
+
+  it("tags に t=mypace が含まれる（mypace タイムライン連携のため必須）", () => {
+    // kako-jun 製アプリの投稿は mypace の1投稿として発行する設計のため、
+    // どの action でも t=mypace が必ず含まれている必要がある。
+    for (const action of ["watering", "seeding", "harvest", "fertilize", "other"] as const) {
+      const ev = buildWorkRecordEvent({
+        action,
+        content: "テスト",
+        createdAt: 1_700_000_000,
+      });
+      expect(ev.tags).toContainEqual(["t", "mypace"]);
+    }
   });
 
   it("cropName 指定時に farm-crop タグが入る", () => {

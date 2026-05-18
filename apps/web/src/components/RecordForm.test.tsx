@@ -195,6 +195,7 @@ describe("RecordForm", () => {
       };
       expect(body.event.kind).toBe(1);
       expect(body.event.content).toBe("トマト 5 個収穫");
+      expect(body.event.tags).toContainEqual(["t", "mypace"]);
       expect(body.event.tags).toContainEqual(["t", "farm-in-pocket"]);
       expect(body.event.tags).toContainEqual(["farm-action", "harvest"]);
     });

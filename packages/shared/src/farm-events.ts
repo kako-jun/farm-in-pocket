@@ -3,7 +3,10 @@
 // Issue: kako-jun/farm-in-pocket#16
 // 入力 → 署名前イベント（pubkey 抜き、kind=1）を生成する。署名は signEvent 側に任せる。
 // タグ仕様:
-//   ["t", "farm-in-pocket"]                       … 検索/フィルタ用ハッシュタグ
+//   ["t", "mypace"]                                … mypace タイムライン参加（kako-jun 製アプリの投稿は
+//                                                    mypace の1投稿として発行して、mypace 上で入り混じって
+//                                                    賑わわせる設計。rate limit / serial / sitemap 連携の入口）
+//   ["t", "farm-in-pocket"]                       … farm-in-pocket 識別用ハッシュタグ
 //   ["farm-action", <FarmAction>]                  … 作業種別（必須）
 //   ["farm-crop", <name>]                          … 作物名（任意）
 //   ["farm-cell", <gridId>, <x>, <y>]              … 紐付け先セル（全部揃ったときだけ）
@@ -31,7 +34,8 @@ export function buildWorkRecordEvent(
   input: BuildWorkRecordEventInput,
 ): Omit<UnsignedNostrEvent, "pubkey"> {
   const tags: string[][] = [
-    ["t", "farm-in-pocket"],
+    ["t", "mypace"], // mypace タイムライン参加（rate limit / serial / sitemap 連携の入口）
+    ["t", "farm-in-pocket"], // farm-in-pocket 識別用
     ["farm-action", input.action],
   ];
 

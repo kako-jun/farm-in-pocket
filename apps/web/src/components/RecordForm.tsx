@@ -55,7 +55,8 @@ function emptyForm(): FormState {
 
 export default function RecordForm(): JSX.Element {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
-  const [pubkey, setPubkey] = useState<string | null>(null);
+  // npub (bech32) を持っておく。表示は短縮して noise を減らす。
+  const [npub, setNpub] = useState<string | null>(null);
   const [grids, setGrids] = useState<GridRecord[]>([]);
   const [form, setForm] = useState<FormState>(() => emptyForm());
   const [drafts, setDrafts] = useState<WorkRecordDraft[]>([]);
@@ -69,7 +70,8 @@ export default function RecordForm(): JSX.Element {
       return;
     }
     setHasKey(true);
-    setPubkey(kp.pubkey);
+    // getMyKeyPair() の中で encodeNpub() 済み。再エンコードせずに表示に使う。
+    setNpub(kp.npub);
     setDrafts(loadDrafts());
 
     // グリッド一覧を取得（失敗してもフォームは出す）
@@ -203,7 +205,8 @@ export default function RecordForm(): JSX.Element {
         createdAt: now,
       });
       const signed = signEvent(draftEvent, kp.secretKey);
-      const client = createMypaceClient(kp.secretKey);
+      // publish は NIP-98 不要なので signer 不要。secretKey は渡さない。
+      const client = createMypaceClient();
       await client.publishEvent(signed);
 
       // 成功: 既存 draft があれば消す
@@ -250,16 +253,26 @@ export default function RecordForm(): JSX.Element {
 
   return (
     <div data-testid="fip-record-form" className="space-y-6">
-      {/* 作業種別ボタン (4 列 × 2 行) */}
+      {/* 作業種別ボタン (4 列 × 2 行) - 単一選択なので radiogroup として扱う */}
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-neutral-700">作業の種類</h2>
-        <div className="grid grid-cols-4 gap-2" data-testid="fip-record-form-actions">
+        <h2 id="fip-record-form-actions-label" className="text-sm font-semibold text-neutral-700">
+          作業の種類
+        </h2>
+        <div
+          className="grid grid-cols-4 gap-2"
+          data-testid="fip-record-form-actions"
+          role="radiogroup"
+          aria-labelledby="fip-record-form-actions-label"
+        >
           {FARM_ACTIONS.map((a) => {
             const selected = form.action === a;
             return (
               <button
                 key={a}
                 type="button"
+                // biome-ignore lint/a11y/useSemanticElements: 4x2 のアイコン付きボタンを単一選択 UI として提供したいので、ネイティブ <input type="radio"> ではなく button + role="radio" の組み合わせを採用。
+                role="radio"
+                aria-checked={selected}
                 data-testid={`fip-record-form-action-${a}`}
                 data-selected={selected ? "true" : "false"}
                 onClick={() => handleSelectAction(a)}
@@ -469,10 +482,14 @@ export default function RecordForm(): JSX.Element {
         )}
       </section>
 
-      {/* 開発者向け: 自分の pubkey をフッターに小さく出す（デバッグ用） */}
-      {pubkey && (
-        <p className="text-[10px] text-neutral-400 font-mono break-all" aria-hidden="true">
-          pubkey: {pubkey.slice(0, 12)}...
+      {/* 自分の npub をフッターに短縮表示（アカウント確認用、noise を減らす） */}
+      {npub && (
+        <p
+          className="text-[10px] text-neutral-400 font-mono"
+          data-testid="fip-record-form-npub-footer"
+          title={npub}
+        >
+          {`${npub.slice(0, 8)}...${npub.slice(-4)}`}
         </p>
       )}
     </div>
