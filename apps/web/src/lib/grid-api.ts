@@ -15,6 +15,7 @@ import type {
   NutrientType,
   PesticideRecord,
   PesticideType,
+  PhRecord,
   PlantSummary,
   RotationWarning,
   SoilType,
@@ -304,4 +305,49 @@ export async function fetchCellHistory(
   return jsonFetch<CellHistoryResult>(
     url(`/api/grids/${gridId}/cells/${x}/${y}/history?pubkey=${encodeURIComponent(pubkey)}`),
   );
+}
+
+// ---- pH records (Issue #24) ----------------------------------------------
+
+export interface RecordPhInput {
+  pubkey: string;
+  value: number;
+  measuredAt?: string;
+  note?: string;
+}
+
+/**
+ * pH 測定値を記録する。
+ * - value は 0-14 (実用 3-10) を想定。範囲外は API 側で 400。
+ * - measuredAt は YYYY-MM-DD。省略時は API 側で今日が入る。
+ */
+export async function recordPh(
+  gridId: string,
+  x: number,
+  y: number,
+  input: RecordPhInput,
+): Promise<PhRecord> {
+  const data = await jsonFetch<{ record: PhRecord }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/ph`),
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return data.record;
+}
+
+/**
+ * セルの pH 測定記録を時系列昇順で全件取得する。
+ */
+export async function fetchCellPh(
+  gridId: string,
+  x: number,
+  y: number,
+  pubkey: string,
+): Promise<PhRecord[]> {
+  const data = await jsonFetch<{ records: PhRecord[] }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/ph?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.records;
 }

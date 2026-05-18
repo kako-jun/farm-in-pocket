@@ -14,16 +14,20 @@ import type {
   NutrientType,
   PesticideRecord,
   PesticideType,
+  PhRecord,
   Season,
   SoilType,
 } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import {
   fetchCellHistory,
+  fetchCellPh,
   fetchCellRecords,
   recordNutrient,
   recordPesticide,
+  recordPh,
 } from "../lib/grid-api";
+import PhTimelineChart from "./charts/PhTimelineChart";
 
 const CONTAINER_LABELS: Record<ContainerType, string> = {
   jiue: "地植え",
@@ -102,7 +106,11 @@ export interface CellDetailProps {
   onClear: () => void | Promise<void>;
 }
 
-type QuickFormKind = null | "nutrient" | "pesticide";
+type QuickFormKind = null | "nutrient" | "pesticide" | "ph";
+
+function todayYmd(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function CellDetail(props: CellDetailProps): JSX.Element {
   const {
@@ -125,6 +133,9 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   const [pesticides, setPesticides] = useState<PesticideRecord[]>([]);
   const [cropHistory, setCropHistory] = useState<CropHistoryRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  // Issue #24: pH 測定記録 (measured_at 昇順)
+  const [phRecords, setPhRecords] = useState<PhRecord[]>([]);
+  const [phLoading, setPhLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickForm, setQuickForm] = useState<QuickFormKind>(null);
 
@@ -158,10 +169,26 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     }
   }, [grid.id, pubkey, cellX, cellY]);
 
+  // Issue #24: pH 測定記録を取得
+  const reloadPh = useCallback(async () => {
+    setPhLoading(true);
+    try {
+      const records = await fetchCellPh(grid.id, cellX, cellY, pubkey);
+      setPhRecords(records);
+    } catch (e) {
+      // pH 取得失敗は致命的でない
+      console.warn("fetchCellPh failed", e);
+      setPhRecords([]);
+    } finally {
+      setPhLoading(false);
+    }
+  }, [grid.id, pubkey, cellX, cellY]);
+
   useEffect(() => {
     void reloadRecords();
     void reloadCropHistory();
-  }, [reloadRecords, reloadCropHistory]);
+    void reloadPh();
+  }, [reloadRecords, reloadCropHistory, reloadPh]);
 
   const handleNutrientSaved = async (input: {
     nutrientType: NutrientType;
@@ -187,6 +214,22 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
       await recordPesticide(grid.id, pubkey, cellX, cellY, input);
       setQuickForm(null);
       await reloadRecords();
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    }
+  };
+
+  // Issue #24: pH 測定保存
+  const handlePhSaved = async (input: {
+    value: number;
+    measuredAt?: string;
+    note?: string;
+  }): Promise<void> => {
+    try {
+      await recordPh(grid.id, cellX, cellY, { pubkey, ...input });
+      setQuickForm(null);
+      await reloadPh();
       await onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
@@ -286,6 +329,22 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
             <PesticideQuickForm
               onCancel={() => setQuickForm(null)}
               onSubmit={handlePesticideSaved}
+            />
+          )}
+        </section>
+
+        {/* 土壌 pH (Issue #24) */}
+        <section className="space-y-2" data-testid="fip-cell-detail-ph-section">
+          <h4 className="text-sm font-semibold text-neutral-700">土壌 pH</h4>
+          {phLoading ? (
+            <p className="text-xs text-neutral-500">読み込み中…</p>
+          ) : (
+            <PhSection
+              records={phRecords}
+              onOpenForm={() => setQuickForm(quickForm === "ph" ? null : "ph")}
+              showForm={quickForm === "ph"}
+              onCancel={() => setQuickForm(null)}
+              onSubmit={handlePhSaved}
             />
           )}
         </section>
@@ -459,6 +518,199 @@ function CropHistoryList(props: { records: CropHistoryRecord[] }): JSX.Element {
         );
       })}
     </ul>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// pH セクション (Issue #24)
+//   * 最新の pH と測定日
+//   * 「pH 測定を記録」ボタン → フォーム
+//   * 直近 10 件のリスト（古いほどフェード）
+//   * 時系列グラフ（自前 SVG, ../charts/PhTimelineChart）
+// ---------------------------------------------------------------------------
+
+function PhSection(props: {
+  records: PhRecord[]; // measured_at 昇順 (古い→新しい)
+  onOpenForm: () => void;
+  showForm: boolean;
+  onCancel: () => void;
+  onSubmit: (input: { value: number; measuredAt?: string; note?: string }) => void | Promise<void>;
+}): JSX.Element {
+  const { records, onOpenForm, showForm, onCancel, onSubmit } = props;
+
+  const latest = records.length > 0 ? records[records.length - 1] : null;
+
+  // グラフ用は全件（昇順そのまま）。日付は YYYY-MM-DD に丸める。
+  const chartData = records.map((r) => ({
+    date: r.measuredAt.slice(0, 10),
+    value: r.value,
+  }));
+
+  // リストは新しい順に直近 10 件
+  // 古いほど薄く → 表示は新しい→古いの順だが、records 内 index が小さいほど古い。
+  // 直近 10 件: 末尾 10 件を逆順で取り出す。
+  const recent: { rec: PhRecord; ageIdx: number; total: number }[] = (() => {
+    const tail = records.slice(-10); // 古いから新しい
+    return tail.reverse().map((rec, i) => {
+      // tail を reverse したので i=0 が最新, i=tail.length-1 が最も古い
+      // 古いほどフェードしたいので「i が大きいほど薄い」になる
+      return { rec, ageIdx: i, total: tail.length };
+    });
+  })();
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between rounded border border-cyan-200 bg-cyan-50/40 px-3 py-2 text-sm">
+        <div>
+          <span className="text-neutral-600">現在の pH</span>
+          <span
+            className="ml-2 font-semibold text-cyan-800"
+            data-testid="fip-cell-detail-ph-current"
+          >
+            {latest ? latest.value.toFixed(1) : "未測定"}
+          </span>
+          {latest && (
+            <span
+              className="ml-2 text-xs text-neutral-500"
+              data-testid="fip-cell-detail-ph-current-date"
+            >
+              （{latest.measuredAt.slice(0, 10)}）
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          data-testid="fip-cell-detail-ph-open"
+          onClick={onOpenForm}
+          className="rounded-lg border border-cyan-400 bg-white px-3 py-2 text-xs text-cyan-700 hover:bg-cyan-50"
+          style={{ minHeight: 36 }}
+        >
+          pH 測定を記録
+        </button>
+      </div>
+
+      {showForm && <PhQuickForm onCancel={onCancel} onSubmit={onSubmit} />}
+
+      {/* 時系列グラフ */}
+      <PhTimelineChart data={chartData} />
+
+      {/* 直近 10 件 (古いほど薄く) */}
+      {recent.length > 0 && (
+        <ul data-testid="fip-cell-detail-ph-list" className="space-y-1">
+          {recent.map(({ rec, ageIdx, total }) => {
+            // ageIdx=0 が最新 → 黒、ageIdx=total-1 が最古 → 薄い
+            // Tailwind: 最新 text-neutral-800, 中間 text-neutral-500, 最古 text-neutral-400
+            const fade =
+              ageIdx === 0
+                ? "text-neutral-800"
+                : ageIdx >= total - 2 && total >= 3
+                  ? "text-neutral-400"
+                  : "text-neutral-500";
+            return (
+              <li
+                key={`ph-${rec.id}`}
+                data-testid={`fip-cell-detail-ph-row-${rec.id}`}
+                data-fade-class={fade}
+                className={`rounded border border-cyan-100 bg-white px-2 py-1 text-xs ${fade}`}
+              >
+                📅 {rec.measuredAt.slice(0, 10)} ・ pH {rec.value.toFixed(1)}
+                {rec.note && <span> ・ {rec.note}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// pH 測定クイックフォーム (Issue #24)
+// ---------------------------------------------------------------------------
+
+function PhQuickForm(props: {
+  onCancel: () => void;
+  onSubmit: (input: { value: number; measuredAt?: string; note?: string }) => void | Promise<void>;
+}): JSX.Element {
+  const [value, setValue] = useState("6.5");
+  const [measuredAt, setMeasuredAt] = useState(todayYmd());
+  const [note, setNote] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  return (
+    <div
+      data-testid="fip-cell-detail-ph-form"
+      className="space-y-2 rounded border border-cyan-200 bg-white p-3"
+    >
+      <label className="block text-xs">
+        pH (0-14、推奨 3-10)
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          max="14"
+          data-testid="fip-cell-detail-ph-value"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        />
+      </label>
+      <label className="block text-xs">
+        測定日
+        <input
+          type="date"
+          data-testid="fip-cell-detail-ph-date"
+          value={measuredAt}
+          onChange={(e) => setMeasuredAt(e.target.value)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        />
+      </label>
+      <label className="block text-xs">
+        メモ (任意)
+        <input
+          type="text"
+          data-testid="fip-cell-detail-ph-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="mt-1 block w-full rounded border border-neutral-300 px-2 py-2 text-sm"
+        />
+      </label>
+      {localError && (
+        <p className="text-xs text-red-600" data-testid="fip-cell-detail-ph-error">
+          {localError}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="fip-cell-detail-ph-submit"
+          onClick={() => {
+            const num = Number(value);
+            if (!Number.isFinite(num) || num < 0 || num > 14) {
+              setLocalError("pH は 0-14 の数値で入力してください");
+              return;
+            }
+            setLocalError(null);
+            void props.onSubmit({
+              value: num,
+              measuredAt: measuredAt || undefined,
+              note: note.trim() === "" ? undefined : note.trim(),
+            });
+          }}
+          className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white"
+          style={{ minHeight: 36 }}
+        >
+          記録する
+        </button>
+        <button
+          type="button"
+          onClick={props.onCancel}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-xs"
+          style={{ minHeight: 36 }}
+        >
+          キャンセル
+        </button>
+      </div>
+    </div>
   );
 }
 

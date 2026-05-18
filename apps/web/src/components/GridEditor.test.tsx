@@ -44,6 +44,18 @@ beforeEach(() => {
   setupFetch();
 });
 
+// Issue #24: CellDetail が背後で fetchCellPh を呼ぶケースで console.warn が出る。
+// 取得失敗は致命的でないため、stderr のノイズだけ落とす。
+let warnSpy: ReturnType<typeof vi.spyOn> | null = null;
+beforeEach(() => {
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {
+    /* noop */
+  });
+});
+afterEach(() => {
+  warnSpy?.mockRestore();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });

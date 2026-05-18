@@ -14,6 +14,7 @@ import type {
   NutrientType,
   PesticideRecord,
   PesticideType,
+  PhRecord,
   Season,
 } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
@@ -356,6 +357,111 @@ function toCropHistoryRecord(row: CropHistoryRow): CropHistoryRecord {
     endedAt: row.ended_at,
   };
 }
+
+// ============================================================================
+// pH 測定記録 (Issue #24)
+//
+// POST /api/grids/:gridId/cells/:x/:y/ph   body: { pubkey, measuredAt?, value, note? }
+//   - value は 0-14 範囲チェック（実用は 3-10 想定だが許容範囲は仕様広く）
+//   - measuredAt 省略時は今日 (YYYY-MM-DD)
+//   - cell が無ければ 404
+// GET  /api/grids/:gridId/cells/:x/:y/ph    そのセルの全 ph_records を measured_at 昇順で返す
+// ============================================================================
+
+interface PhRow {
+  id: number;
+  cell_id: number;
+  measured_at: string;
+  value: number;
+  note: string | null;
+}
+
+function toPhRecord(row: PhRow): PhRecord {
+  return {
+    id: row.id,
+    cellId: row.cell_id,
+    measuredAt: row.measured_at,
+    value: row.value,
+    note: row.note,
+  };
+}
+
+app.post("/:gridId/cells/:x/:y/ph", async (c) => {
+  const gridId = c.req.param("gridId");
+  const coords = parseCellCoords(c.req.param("x"), c.req.param("y"));
+  if (!coords.ok) return c.json({ error: coords.error }, 400);
+
+  const body = await c.req.json<{
+    pubkey?: unknown;
+    measuredAt?: unknown;
+    value?: unknown;
+    note?: unknown;
+  }>();
+
+  const auth = await requireGridOwner(c.env.DB, gridId, body.pubkey);
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
+  // value: 0-14 範囲
+  if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
+    return c.json({ error: "value must be a finite number" }, 400);
+  }
+  if (body.value < 0 || body.value > 14) {
+    return c.json({ error: "value out of range (0-14)" }, 400);
+  }
+
+  const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
+  if (cellId == null) {
+    return c.json({ error: "cell not found. configure container/soil first." }, 404);
+  }
+
+  // measuredAt: 省略時は今日 (YYYY-MM-DD)
+  const measuredAt =
+    typeof body.measuredAt === "string" && body.measuredAt.length > 0
+      ? body.measuredAt
+      : new Date().toISOString().slice(0, 10);
+  const note = typeof body.note === "string" ? body.note : null;
+
+  const ins = await c.env.DB.prepare(
+    `INSERT INTO ph_records (cell_id, measured_at, value, note)
+     VALUES (?, ?, ?, ?)`,
+  )
+    .bind(cellId, measuredAt, body.value, note)
+    .run();
+
+  const row = await c.env.DB.prepare(
+    `SELECT id, cell_id, measured_at, value, note
+       FROM ph_records WHERE id = ?`,
+  )
+    .bind(ins.meta.last_row_id)
+    .first<PhRow>();
+  if (!row) return c.json({ error: "record vanished" }, 500);
+  return c.json({ record: toPhRecord(row) }, 201);
+});
+
+app.get("/:gridId/cells/:x/:y/ph", async (c) => {
+  const gridId = c.req.param("gridId");
+  const coords = parseCellCoords(c.req.param("x"), c.req.param("y"));
+  if (!coords.ok) return c.json({ error: coords.error }, 400);
+
+  const auth = await requireGridOwner(c.env.DB, gridId, c.req.query("pubkey"));
+  if (!auth.ok) return c.json({ error: auth.error }, auth.status);
+
+  const cellId = await findCellId(c.env.DB, gridId, coords.x, coords.y);
+  if (cellId == null) {
+    // セルが無ければ空配列で返す
+    return c.json({ records: [] });
+  }
+
+  const res = await c.env.DB.prepare(
+    `SELECT id, cell_id, measured_at, value, note
+       FROM ph_records
+      WHERE cell_id = ?
+      ORDER BY measured_at ASC, id ASC`,
+  )
+    .bind(cellId)
+    .all<PhRow>();
+  return c.json({ records: (res.results ?? []).map(toPhRecord) });
+});
 
 app.get("/:gridId/cells/:x/:y/history", async (c) => {
   const gridId = c.req.param("gridId");

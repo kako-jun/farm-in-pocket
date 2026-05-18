@@ -149,6 +149,20 @@ export interface CropHistoryRecord {
   endedAt: string | null;
 }
 
+// ============================================================================
+// pH 測定記録 DTO (Issue #24)
+//   * value は 0-14 (実際の入力範囲は 3-10 を想定)
+//   * measuredAt は ISO 文字列 (省略時は today)
+// ============================================================================
+
+export interface PhRecord {
+  id: number;
+  cellId: number;
+  measuredAt: string;
+  value: number;
+  note: string | null;
+}
+
 export interface GridRecord {
   id: string;
   userPubkey: string;

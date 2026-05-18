@@ -39,6 +39,18 @@ beforeEach(() => {
   setupFetch();
 });
 
+// Issue #24: /ph はテストごとに明示しなくても reloadPh の catch で空配列に倒れるが、
+// 念のため console.warn は黙らせる（fetchCellPh の warn ログだけ）。
+let warnSpy: ReturnType<typeof vi.spyOn> | null = null;
+beforeEach(() => {
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {
+    /* noop */
+  });
+});
+afterEach(() => {
+  warnSpy?.mockRestore();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -351,6 +363,106 @@ describe("CellDetail", () => {
     expect(screen.getByTestId("fip-cell-detail-crop-history-empty").textContent).toContain(
       "過去履歴はまだありません",
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #24: 土壌 pH セクション
+  // -------------------------------------------------------------------------
+
+  it("pH 取得結果から最新値と直近 10 件のリストが表示される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/ph(\?|$)/.test(u),
+      response: {
+        records: [
+          { id: 1, cellId: 11, measuredAt: "2026-04-01", value: 5.5, note: null },
+          { id: 2, cellId: 11, measuredAt: "2026-04-15", value: 6.0, note: null },
+          { id: 3, cellId: 11, measuredAt: "2026-05-17", value: 6.5, note: "雨上がり" },
+        ],
+      },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-ph-current")).toBeInTheDocument();
+    });
+    // 最新値は末尾 (measured_at 昇順なので 6.5)
+    expect(screen.getByTestId("fip-cell-detail-ph-current").textContent).toContain("6.5");
+    expect(screen.getByTestId("fip-cell-detail-ph-current-date").textContent).toContain(
+      "2026-05-17",
+    );
+    // リストに 3 件出る
+    expect(screen.getByTestId("fip-cell-detail-ph-row-1")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-cell-detail-ph-row-2")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-cell-detail-ph-row-3")).toBeInTheDocument();
+    // 最新行（id=3）は濃く、最古行（id=1）はフェード
+    const newest = screen.getByTestId("fip-cell-detail-ph-row-3");
+    const oldest = screen.getByTestId("fip-cell-detail-ph-row-1");
+    expect(newest.getAttribute("data-fade-class")).toBe("text-neutral-800");
+    expect(oldest.getAttribute("data-fade-class")).toBe("text-neutral-400");
+    // グラフが描画されている (3 件)
+    expect(screen.getByTestId("fip-ph-chart")).toBeInTheDocument();
+  });
+
+  it("「pH 測定を記録」→ フォーム表示 → 保存で POST /ph が呼ばれる", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/cells\/1\/2\/ph(\?|$)/.test(u) && (i?.method ?? "GET") === "GET",
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u, i) => /\/cells\/1\/2\/ph$/.test(u) && i?.method === "POST",
+      response: {
+        record: {
+          id: 100,
+          cellId: 11,
+          measuredAt: "2026-05-17",
+          value: 6.8,
+          note: "テスト",
+        },
+      },
+      status: 201,
+    });
+    const user = userEvent.setup();
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-ph-current")).toBeInTheDocument();
+    });
+    // 未測定の状態
+    expect(screen.getByTestId("fip-cell-detail-ph-current").textContent).toContain("未測定");
+
+    await user.click(screen.getByTestId("fip-cell-detail-ph-open"));
+    expect(screen.getByTestId("fip-cell-detail-ph-form")).toBeInTheDocument();
+
+    const valueInput = screen.getByTestId("fip-cell-detail-ph-value") as HTMLInputElement;
+    // デフォルト "6.5" を消して 6.8 を入れる
+    await user.clear(valueInput);
+    await user.type(valueInput, "6.8");
+    await user.type(screen.getByTestId("fip-cell-detail-ph-note"), "テスト");
+    await user.click(screen.getByTestId("fip-cell-detail-ph-submit"));
+
+    await waitFor(() => {
+      const post = fetchCalls.find((c) => c.method === "POST" && /\/cells\/1\/2\/ph$/.test(c.url));
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}");
+      expect(body.pubkey).toBe(PUBKEY);
+      expect(body.value).toBeCloseTo(6.8, 5);
+      expect(body.note).toBe("テスト");
+      expect(typeof body.measuredAt).toBe("string");
+    });
   });
 
   it("過去履歴 fetch で年・季節・作物名・科 が一覧表示される", async () => {
