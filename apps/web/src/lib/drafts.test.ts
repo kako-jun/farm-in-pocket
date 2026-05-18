@@ -21,6 +21,7 @@ function mkDraft(overrides: Partial<WorkRecordDraft> = {}): WorkRecordDraft {
     cropName: overrides.cropName ?? null,
     imageUrls: overrides.imageUrls ?? [],
     createdAt: overrides.createdAt ?? 1_700_000_000,
+    milestone: overrides.milestone ?? null,
   };
 }
 

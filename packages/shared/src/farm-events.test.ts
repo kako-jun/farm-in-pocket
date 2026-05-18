@@ -114,4 +114,32 @@ describe("buildWorkRecordEvent", () => {
     });
     expect(ev.created_at).toBe(1_700_000_123);
   });
+
+  // Issue #27 — 節目イベントの farm-milestone タグ
+  it("milestone 指定時に farm-milestone タグが入る", () => {
+    const ev = buildWorkRecordEvent({
+      action: "harvest",
+      content: "今年初収穫！",
+      milestone: "harvest_complete",
+      createdAt: 1_700_000_000,
+    });
+    expect(ev.tags).toContainEqual(["farm-milestone", "harvest_complete"]);
+  });
+
+  it("milestone が未指定（undefined / null）なら farm-milestone タグは入らない", () => {
+    const ev1 = buildWorkRecordEvent({
+      action: "watering",
+      content: "水やり",
+      createdAt: 1_700_000_000,
+    });
+    expect(ev1.tags.some((t) => t[0] === "farm-milestone")).toBe(false);
+
+    const ev2 = buildWorkRecordEvent({
+      action: "watering",
+      content: "水やり",
+      milestone: null,
+      createdAt: 1_700_000_000,
+    });
+    expect(ev2.tags.some((t) => t[0] === "farm-milestone")).toBe(false);
+  });
 });

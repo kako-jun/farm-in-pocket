@@ -183,6 +183,42 @@ describe("OtherFarmPage", () => {
     });
   });
 
+  it("farm-milestone タグ付き event は強調枠 + バッジで表示される (Issue #27)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    fetchMock.mockResolvedValue(
+      makeData({
+        events: [
+          makeEvent({
+            id: "milestone",
+            created_at: now - 100,
+            content: "今年初収穫！",
+            tags: [
+              ["t", "farm-in-pocket"],
+              ["farm-action", "harvest"],
+              ["farm-crop", "トマト"],
+              ["farm-milestone", "harvest_complete"],
+            ],
+          }),
+          makeEvent({ id: "normal", created_at: now - 200, content: "通常の水やり" }),
+        ],
+      }),
+    );
+    getMyKeyPairMock.mockReturnValue(null);
+    render(<OtherFarmPage npub="npub1aaaa" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("other-timeline")).toBeInTheDocument();
+    });
+    const items = screen.getAllByTestId("other-timeline-item");
+    // 1 件目 (milestone) は data-milestone 属性付き
+    expect(items[0]?.getAttribute("data-milestone")).toBe("harvest_complete");
+    // 2 件目 (normal) は data-milestone なし
+    expect(items[1]?.getAttribute("data-milestone")).toBeNull();
+    // バッジは1個だけ
+    const badges = screen.getAllByTestId("other-timeline-milestone-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]?.textContent).toContain("収穫完了");
+  });
+
   it("Stella placeholder が 5 個並び、全て disabled で tooltip 用 title が付く", async () => {
     fetchMock.mockResolvedValue(makeData());
     getMyKeyPairMock.mockReturnValue(null);

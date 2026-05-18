@@ -285,6 +285,72 @@ describe("RecordForm", () => {
     expect(add.textContent).toContain("0/4");
   });
 
+  it("節目イベントチェックで farm-milestone タグが event に乗る (Issue #27)", async () => {
+    seedKey();
+    routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });
+    routes.push({
+      match: (u, i) => /\/api\/publish$/.test(u) && i?.method === "POST",
+      response: { success: true },
+    });
+
+    const user = userEvent.setup();
+    render(<RecordForm />);
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-record-form")).toBeInTheDocument();
+    });
+
+    // harvest を選択 → 節目チェック → 自動で harvest_complete が選ばれる
+    await user.click(screen.getByTestId("fip-record-form-action-harvest"));
+    await user.click(screen.getByTestId("fip-record-form-milestone-toggle"));
+    expect(
+      (screen.getByTestId("fip-record-form-milestone-select") as HTMLSelectElement).value,
+    ).toBe("harvest_complete");
+
+    await user.type(screen.getByTestId("fip-record-form-content"), "今年初収穫！");
+    await user.click(screen.getByTestId("fip-record-form-submit"));
+
+    await waitFor(() => {
+      const post = fetchCalls.find((c) => c.method === "POST" && /\/api\/publish$/.test(c.url));
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}") as {
+        event: { tags: string[][] };
+      };
+      expect(body.event.tags).toContainEqual(["farm-milestone", "harvest_complete"]);
+    });
+  });
+
+  it("節目チェックを外すと farm-milestone タグは event に乗らない (Issue #27)", async () => {
+    seedKey();
+    routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });
+    routes.push({
+      match: (u, i) => /\/api\/publish$/.test(u) && i?.method === "POST",
+      response: { success: true },
+    });
+
+    const user = userEvent.setup();
+    render(<RecordForm />);
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-record-form")).toBeInTheDocument();
+    });
+
+    // 一度チェックして外す（toggle で null に戻る）
+    await user.click(screen.getByTestId("fip-record-form-milestone-toggle"));
+    await user.click(screen.getByTestId("fip-record-form-milestone-toggle"));
+    expect(screen.queryByTestId("fip-record-form-milestone-select")).toBeNull();
+
+    await user.type(screen.getByTestId("fip-record-form-content"), "通常の水やり");
+    await user.click(screen.getByTestId("fip-record-form-submit"));
+
+    await waitFor(() => {
+      const post = fetchCalls.find((c) => c.method === "POST" && /\/api\/publish$/.test(c.url));
+      expect(post).toBeDefined();
+      const body = JSON.parse(post?.body ?? "{}") as {
+        event: { tags: string[][] };
+      };
+      expect(body.event.tags.some((t) => t[0] === "farm-milestone")).toBe(false);
+    });
+  });
+
   it("既存 draft の imageUrls がフォームに復元され、投稿時に event tags に乗る", async () => {
     seedKey();
     routes.push({ match: (u) => /\/api\/grids/.test(u), response: { grids: [] } });

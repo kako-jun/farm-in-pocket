@@ -237,6 +237,24 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 | `["farm-crop", <name>]`                       | 作物名（任意）                                                |
 | `["farm-cell", <gridId>, <x>, <y>]`           | 紐付け先セル（gridId + x + y がすべて揃ったときだけ）         |
 | `["image", <url>]` ×N                         | 添付写真の URL（nostr.build、最大 4 枚、Issue #17）           |
+| `["farm-milestone", <FarmMilestone>]`         | 節目イベント識別（任意・Issue #27）                           |
+
+### 節目イベント（farm-milestone）
+
+「今年初収穫！」「初めて咲いた」などの**特別な節目**を mypace タイムラインに知らせるためのタグです（Issue #27）。`farm-milestone` タグが付いた投稿は、ポケ農のコミュニティ一覧・他人の畑タイムラインで **emerald 系の太枠 + 🏆 バッジ** で強調表示されます（カード風）。
+
+- **付与は任意**: ユーザーが RecordForm の「これは節目イベントです 🏆」チェックを入れたときだけ付きます。`harvest` や `observation` でも自動では付きません（自動推奨はしない方針 — 何を「節目」とみなすかはユーザー判断）。
+- **デフォルト推奨値**: チェックを入れた瞬間の `farm-action` に応じて、`harvest` なら `harvest_complete`、`seeding` なら `seeding_complete`、それ以外は `other` を初期値として埋めます。セレクトで自由に変更できます。
+- **任意の作業に付けられる**: 例えば「観察」中に「咲いた」を発見した場合も `observation` + `bloom` で投稿できます。
+
+| 種別                | 値                  | アイコン |
+| ------------------- | ------------------- | -------- |
+| 播種完了            | `seeding_complete`  | 🌱       |
+| 収穫完了            | `harvest_complete`  | 🌾       |
+| 咲いた              | `bloom`             | 🌸       |
+| 実った              | `fruit`             | 🍅       |
+| 枯れた・失敗        | `failure`           | 🥀       |
+| その他の節目        | `other`             | 🏆       |
 
 ### ローカルストレージキー
 

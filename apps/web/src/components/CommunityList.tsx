@@ -4,7 +4,13 @@
 // 横長バナーカード（aspect-[3/1] のバナー + 丸アイコン重ね）を縦並びで表示する。
 // クリックで /community/<npub> へ遷移するが、その先のページは Issue #19 で実装する。
 
-import { FARM_ACTION_ICONS, FARM_ACTION_LABELS_JA, type FarmAction } from "@farm-in-pocket/shared";
+import {
+  FARM_ACTION_ICONS,
+  FARM_ACTION_LABELS_JA,
+  FARM_MILESTONE_ICONS,
+  FARM_MILESTONE_LABELS_JA,
+  type FarmAction,
+} from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import {
@@ -104,13 +110,20 @@ function UserCard({ user }: { user: CommunityUser }): JSX.Element {
   const href = `/community/${user.npub}`;
   const action = user.latestEvent.action;
   const crop = user.latestEvent.crop;
+  const milestone = user.latestEvent.milestone;
   const rel = relativeJa(user.latestEvent.created_at);
+
+  // 節目イベントなら emerald 系の太枠で「これは特別」と一目で分かるようにする。
+  const cardClass = milestone
+    ? "block overflow-hidden rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-sm ring-2 ring-emerald-200 hover:shadow"
+    : "block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm hover:shadow";
 
   return (
     <a
       href={href}
-      className="block overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm hover:shadow"
+      className={cardClass}
       data-testid="community-card"
+      data-milestone={milestone ?? undefined}
     >
       {/* 横長バナー: aspect-[3/1]、丸アイコンを下端に少し重ねる */}
       <div className="relative">
@@ -137,7 +150,18 @@ function UserCard({ user }: { user: CommunityUser }): JSX.Element {
         </div>
       </div>
       <div className="px-4 pt-10 pb-4 min-h-[44px]">
-        <div className="text-base font-semibold text-neutral-900">{name}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-base font-semibold text-neutral-900">{name}</div>
+          {milestone && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white"
+              data-testid="community-milestone-badge"
+            >
+              <span aria-hidden="true">{FARM_MILESTONE_ICONS[milestone]}</span>
+              <span>{FARM_MILESTONE_LABELS_JA[milestone]}</span>
+            </span>
+          )}
+        </div>
         <div className="mt-1 text-sm text-neutral-600">
           <span>
             {actionIcon(action)} {actionLabel(action)}

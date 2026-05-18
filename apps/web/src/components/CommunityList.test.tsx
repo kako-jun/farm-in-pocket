@@ -27,6 +27,7 @@ function makeUser(overrides: Partial<CommunityUser> = {}): CommunityUser {
       content: "今日も水やり",
       action: "watering",
       crop: "トマト",
+      milestone: null,
       created_at: Math.floor(Date.now() / 1000) - 3600,
     },
     ...overrides,
