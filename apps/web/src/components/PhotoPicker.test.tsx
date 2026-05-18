@@ -7,6 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SECRET_KEY_STORAGE_KEY } from "../lib/keys";
 import PhotoPicker from "./PhotoPicker";
 
+// FilterPickerModal 内部で URL.createObjectURL を使うので雛形を用意。
+function ensureUrlMocks(): void {
+  if (typeof URL.createObjectURL !== "function") {
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+  }
+  if (typeof URL.revokeObjectURL !== "function") {
+    URL.revokeObjectURL = vi.fn();
+  }
+}
+
 const SHA = "a".repeat(64);
 const FAKE_URL = `https://image.nostr.build/${SHA}.png`;
 
@@ -46,6 +56,7 @@ function setupHappyFetch(): void {
 beforeEach(() => {
   localStorage.clear();
   setupHappyFetch();
+  ensureUrlMocks();
 });
 
 afterEach(() => {
@@ -62,7 +73,7 @@ describe("PhotoPicker", () => {
     expect(screen.getByTestId("fip-photo-picker-add").textContent).toContain("2/4");
   });
 
-  it("ファイル選択 → uploadFile が走り、onChange に新しい url が渡される", async () => {
+  it("ファイル選択 → フィルタモーダル → アップロード確定で onChange に新しい url が渡される", async () => {
     seedKey();
     const onChange = vi.fn();
     render(<PhotoPicker urls={[]} onChange={onChange} />);
@@ -72,9 +83,37 @@ describe("PhotoPicker", () => {
     const user = userEvent.setup();
     await user.upload(input, file);
 
+    // ファイル選択後にフィルタガチャモーダルが出る
+    const modal = await screen.findByTestId("fip-filter-picker-modal");
+    expect(modal).toBeInTheDocument();
+
+    // 「なし」を選んで焼き込みをスキップしつつアップロード確定
+    await user.click(screen.getByTestId("fip-filter-picker-none"));
+    await user.click(screen.getByTestId("fip-filter-picker-confirm"));
+
     await waitFor(() => {
       expect(onChange).toHaveBeenCalledWith([FAKE_URL]);
     });
+  });
+
+  it("ファイル選択後にキャンセルすると onChange は呼ばれずアップロードもされない", async () => {
+    seedKey();
+    const onChange = vi.fn();
+    render(<PhotoPicker urls={[]} onChange={onChange} />);
+
+    const input = screen.getByTestId("fip-photo-picker-input") as HTMLInputElement;
+    const file = new File([new Uint8Array(50)], "test.png", { type: "image/png" });
+    const user = userEvent.setup();
+    await user.upload(input, file);
+
+    await screen.findByTestId("fip-filter-picker-modal");
+    await user.click(screen.getByTestId("fip-filter-picker-cancel"));
+
+    expect(onChange).not.toHaveBeenCalled();
+    // モーダルは閉じる
+    expect(screen.queryByTestId("fip-filter-picker-modal")).not.toBeInTheDocument();
+    // nostr.build へ POST は飛んでいない
+    expect(calls.some((c) => c.url.startsWith("https://nostr.build/"))).toBe(false);
   });
 
   it("サムネ × ボタンで onChange から該当 url が除外される", async () => {
@@ -139,8 +178,13 @@ describe("PhotoPicker", () => {
     const file = new File([new Uint8Array(10)], "p.png", { type: "image/png" });
 
     const user = userEvent.setup();
-    // 待ち合わせを await しないでアップロードを開始させる
-    void user.upload(input, file);
+    await user.upload(input, file);
+
+    // フィルタモーダル経由で「なし」→ 確定でアップロード開始
+    await screen.findByTestId("fip-filter-picker-modal");
+    await user.click(screen.getByTestId("fip-filter-picker-none"));
+    // 確定は await しない (進捗 UI を観察するため)
+    void user.click(screen.getByTestId("fip-filter-picker-confirm"));
 
     await waitFor(() => {
       expect(screen.getByTestId("fip-photo-picker-progress")).toBeInTheDocument();

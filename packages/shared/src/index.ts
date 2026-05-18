@@ -9,6 +9,8 @@ export * from "./db";
 export * from "./fade";
 export * from "./farm";
 export * from "./farm-events";
+export * from "./filters";
+export * from "./image";
 export * from "./mypace";
 export * from "./nostr";
 export * from "./relay";

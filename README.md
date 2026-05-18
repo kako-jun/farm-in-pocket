@@ -227,6 +227,11 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
   - 成功した URL は mypace `/api/uploads` に履歴として fire-and-forget で記録されます（履歴登録の失敗はアップロード本体の成功を妨げません）。
   - サムネの **×** ボタンで個別に削除できます（nostr.build からも `NIP-96 DELETE` で削除を試みます）。
   - **アップロード上限**: 画像 **10MB** / 動画 **10MB** / 音声 **1MB**。上限超過時はアップロード前に弾きます。
+- **フィルタガチャ**（Issue #28）。写真を選択すると、アップロード前に **mypace 互換のフィルタプリセット 7 種**（Fuji / Kodak / Wash / Xpro / Mono / Cool / Vivid）からランダムに 1 つが自動適用されます。
+  - **🎲 もう一回** で別プリセットに再抽選、**フィルタを選ぶ** で 7 種 + 「なし」のドット UI から手動選択できます。
+  - **アップロード** 確定時に HTML5 Canvas の `ctx.filter` で**実体に焼き込み**してから nostr.build に POST します（プレビューは CSS filter、配信物は焼き込み済み JPEG/PNG）。
+  - 複数枚選択時は **全枚に同じプリセット**が適用されます（プレビューは先頭 1 枚 + 「×N 枚」バッジ）。
+  - 一部古いブラウザ（`ctx.filter` 未対応の旧 Safari など）では加工をスキップして元画像をそのままアップロードします。プリセット定義は `packages/shared/src/filters.ts`、焼き込みは `packages/shared/src/image/apply-filter.ts` に集約。
 
 ### Nostr イベント仕様（kind = 1）
 
