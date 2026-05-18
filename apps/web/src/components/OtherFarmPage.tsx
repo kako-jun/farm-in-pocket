@@ -12,7 +12,14 @@
 //
 // プライバシー方針: マイ畑の D1 グリッド構造は絶対にここに出さない。Nostr 公開チャネルだけを使う。
 
-import { FARM_ACTION_ICONS, FARM_ACTION_LABELS_JA, type FarmAction } from "@farm-in-pocket/shared";
+import {
+  FARM_ACTION_ICONS,
+  FARM_ACTION_LABELS_JA,
+  FARM_MILESTONE_ICONS,
+  FARM_MILESTONE_LABELS_JA,
+  type FarmAction,
+  isFarmMilestone,
+} from "@farm-in-pocket/shared";
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { relativeJa } from "../lib/community";
@@ -304,12 +311,30 @@ export default function OtherFarmPage({ npub }: Props): JSX.Element {
               const action = findTagValue(event.tags, "farm-action");
               const crop = findTagValue(event.tags, "farm-crop");
               const images = findImageUrls(event.tags);
+              const milestoneRaw = findTagValue(event.tags, "farm-milestone");
+              const milestone = isFarmMilestone(milestoneRaw) ? milestoneRaw : null;
+              // 節目イベントは emerald 系の太枠 + バッジで強調表示する（Issue #27）。
+              const itemClass = milestone
+                ? "rounded border-2 border-emerald-500 bg-emerald-50 p-3 ring-2 ring-emerald-200"
+                : "rounded border border-neutral-200 bg-white p-3";
               return (
                 <li
                   key={event.id}
-                  className="rounded border border-neutral-200 bg-white p-3"
+                  className={itemClass}
                   data-testid="other-timeline-item"
+                  data-milestone={milestone ?? undefined}
                 >
+                  {milestone && (
+                    <div className="mb-2 flex items-center gap-1">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white"
+                        data-testid="other-timeline-milestone-badge"
+                      >
+                        <span aria-hidden="true">{FARM_MILESTONE_ICONS[milestone]}</span>
+                        <span>{FARM_MILESTONE_LABELS_JA[milestone]}</span>
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-sm text-neutral-700">
                     <span>
                       {actionIcon(action)} {actionLabel(action)}

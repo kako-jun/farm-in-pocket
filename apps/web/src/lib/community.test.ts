@@ -155,6 +155,48 @@ describe("fetchFarmInPocketUsers", () => {
     expect(result.users).toEqual([]);
     expect(createMypaceClientMock).not.toHaveBeenCalled();
   });
+
+  it("farm-milestone タグから milestone が抽出される（Issue #27）", async () => {
+    const pk = pubkey("eeee");
+    queryRelaysMock.mockResolvedValue({
+      events: [
+        makeEvent({
+          id: "milestone-ev",
+          pubkey: pk,
+          tags: [
+            ["t", "farm-in-pocket"],
+            ["farm-action", "harvest"],
+            ["farm-milestone", "harvest_complete"],
+          ],
+        }),
+      ],
+      errors: [],
+    });
+    mockGetProfiles({});
+    const result = await fetchFarmInPocketUsers();
+    expect(result.users[0]?.latestEvent.milestone).toBe("harvest_complete");
+  });
+
+  it("不明な milestone 値は null に正規化される（Issue #27）", async () => {
+    const pk = pubkey("ffff");
+    queryRelaysMock.mockResolvedValue({
+      events: [
+        makeEvent({
+          id: "bad-ev",
+          pubkey: pk,
+          tags: [
+            ["t", "farm-in-pocket"],
+            ["farm-action", "watering"],
+            ["farm-milestone", "totally_made_up_value"],
+          ],
+        }),
+      ],
+      errors: [],
+    });
+    mockGetProfiles({});
+    const result = await fetchFarmInPocketUsers();
+    expect(result.users[0]?.latestEvent.milestone).toBeNull();
+  });
 });
 
 describe("UI ヘルパ", () => {
@@ -163,7 +205,14 @@ describe("UI ヘルパ", () => {
       pubkey: "00",
       npub,
       profile,
-      latestEvent: { id: "x", content: "", action: null, crop: null, created_at: 0 },
+      latestEvent: {
+        id: "x",
+        content: "",
+        action: null,
+        crop: null,
+        milestone: null,
+        created_at: 0,
+      },
     };
   }
 

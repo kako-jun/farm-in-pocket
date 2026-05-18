@@ -48,12 +48,66 @@ export const FARM_ACTION_ICONS: Record<FarmAction, string> = {
   other: "📝",
 };
 
+// =============================================================================
+// 節目イベント（farm-milestone） / Issue #27
+// =============================================================================
+//
+// 通常の作業記録のうち「特別な節目」（収穫完了・開花・結実・失敗 等）を mypace 側に
+// 知らせるための種別。値は `["farm-milestone", <FarmMilestone>]` タグとして event.tags に
+// 載り、mypace タイムラインで「カード化（強調表示）」される。
+//
+// 自動判定はしない。ユーザーが RecordForm で「これは節目イベントです」と明示的に
+// チェックしたときだけ付ける。任意の作業に付けられる（harvest / observation 以外でも可）。
+
+export type FarmMilestone =
+  | "seeding_complete" // 播種完了
+  | "harvest_complete" // 収穫完了
+  | "bloom" // 咲いた
+  | "fruit" // 実った
+  | "failure" // 枯れた・失敗
+  | "other"; // その他の節目
+
+/** UI セレクタ順を兼ねた milestone の正本順。 */
+export const FARM_MILESTONES: readonly FarmMilestone[] = [
+  "seeding_complete",
+  "harvest_complete",
+  "bloom",
+  "fruit",
+  "failure",
+  "other",
+] as const;
+
+export const FARM_MILESTONE_LABELS_JA: Record<FarmMilestone, string> = {
+  seeding_complete: "播種完了",
+  harvest_complete: "収穫完了",
+  bloom: "咲いた",
+  fruit: "実った",
+  failure: "枯れた・失敗",
+  other: "節目",
+};
+
+export const FARM_MILESTONE_ICONS: Record<FarmMilestone, string> = {
+  seeding_complete: "🌱",
+  harvest_complete: "🌾",
+  bloom: "🌸",
+  fruit: "🍅",
+  failure: "🥀",
+  other: "🏆",
+};
+
+/** 任意文字列が FarmMilestone として有効か判定する（タグ抽出で使う）。 */
+export function isFarmMilestone(value: string | null | undefined): value is FarmMilestone {
+  if (typeof value !== "string") return false;
+  return (FARM_MILESTONES as readonly string[]).includes(value);
+}
+
 /**
  * 作業記録の下書きエントリ。
  *
  * - `id` は uuid（フロントで生成）。再投稿時の冪等キーとして使う。
  * - `imageUrls` は Issue #17（写真アップロード）が埋める。本 Issue では常に `[]`。
  * - `createdAt` は draft 作成時刻（unix seconds）。投稿時の `created_at` とは別扱い。
+ * - `milestone` は Issue #27（節目イベント）。null なら通常の作業記録。
  */
 export interface WorkRecordDraft {
   id: string;
@@ -65,6 +119,7 @@ export interface WorkRecordDraft {
   cropName: string | null;
   imageUrls: string[];
   createdAt: number;
+  milestone: FarmMilestone | null;
 }
 
 /** 投稿テキストの最大文字数。Twitter 互換で 280。 */

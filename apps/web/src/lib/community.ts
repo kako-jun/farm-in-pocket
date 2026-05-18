@@ -10,10 +10,12 @@
 
 import {
   DEFAULT_RELAYS,
+  type FarmMilestone,
   type NostrEvent,
   type NostrProfile,
   encodeNpub,
   hexToBytes,
+  isFarmMilestone,
   queryRelays,
 } from "@farm-in-pocket/shared";
 import { createMypaceClient } from "./mypace";
@@ -25,6 +27,8 @@ export interface CommunityLatestEvent {
   action: string | null;
   /** event.tags から抽出した farm-crop 値（未指定なら null）。 */
   crop: string | null;
+  /** event.tags から抽出した farm-milestone 値（未指定 or 不明値なら null）。 */
+  milestone: FarmMilestone | null;
   /** unix seconds。 */
   created_at: number;
 }
@@ -51,11 +55,13 @@ function findTagValue(tags: string[][], name: string): string | null {
 }
 
 function toLatest(event: NostrEvent): CommunityLatestEvent {
+  const milestoneRaw = findTagValue(event.tags, "farm-milestone");
   return {
     id: event.id,
     content: event.content,
     action: findTagValue(event.tags, "farm-action"),
     crop: findTagValue(event.tags, "farm-crop"),
+    milestone: isFarmMilestone(milestoneRaw) ? milestoneRaw : null,
     created_at: event.created_at,
   };
 }

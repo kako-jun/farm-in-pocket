@@ -11,8 +11,9 @@
 //   ["farm-crop", <name>]                          … 作物名（任意）
 //   ["farm-cell", <gridId>, <x>, <y>]              … 紐付け先セル（全部揃ったときだけ）
 //   ["image", <url>] *N                            … 添付写真（#17 で増える）
+//   ["farm-milestone", <FarmMilestone>]            … 節目イベント識別（#27、任意。mypace 側でカード化される）
 
-import type { FarmAction } from "./farm";
+import type { FarmAction, FarmMilestone } from "./farm";
 import type { UnsignedNostrEvent } from "./mypace/types";
 
 export interface BuildWorkRecordEventInput {
@@ -23,6 +24,8 @@ export interface BuildWorkRecordEventInput {
   cellY?: number | null;
   cropName?: string | null;
   imageUrls?: string[];
+  /** 節目イベント識別（任意）。指定時 `["farm-milestone", <value>]` タグが追加される。 */
+  milestone?: FarmMilestone | null;
   /** 省略時は `Math.floor(Date.now() / 1000)`。テストでは固定値を渡す。 */
   createdAt?: number;
 }
@@ -61,6 +64,12 @@ export function buildWorkRecordEvent(
         tags.push(["image", url]);
       }
     }
+  }
+
+  // milestone は明示指定があるときだけ追加する（自動推奨はしない）。
+  // 値の検証は呼び出し側の型で担保される（FarmMilestone リテラル）。
+  if (typeof input.milestone === "string" && input.milestone.length > 0) {
+    tags.push(["farm-milestone", input.milestone]);
   }
 
   const createdAt =

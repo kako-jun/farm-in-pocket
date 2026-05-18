@@ -11,7 +11,11 @@ import {
   FARM_ACTIONS,
   FARM_ACTION_ICONS,
   FARM_ACTION_LABELS_JA,
+  FARM_MILESTONES,
+  FARM_MILESTONE_ICONS,
+  FARM_MILESTONE_LABELS_JA,
   type FarmAction,
+  type FarmMilestone,
   type GridRecord,
   WORK_RECORD_MAX_CONTENT_LENGTH,
   type WorkRecordDraft,
@@ -41,6 +45,8 @@ interface FormState {
   cropName: string;
   content: string;
   imageUrls: string[];
+  // milestone は null なら通常の作業記録、値があれば farm-milestone タグが付く（Issue #27）。
+  milestone: FarmMilestone | null;
 }
 
 function emptyForm(): FormState {
@@ -53,6 +59,7 @@ function emptyForm(): FormState {
     cropName: "",
     content: "",
     imageUrls: [],
+    milestone: null,
   };
 }
 
@@ -161,6 +168,7 @@ export default function RecordForm(): JSX.Element {
     cropName: form.cropName.length > 0 ? form.cropName : null,
     imageUrls: form.imageUrls,
     createdAt,
+    milestone: form.milestone,
   });
 
   const handleSaveDraft = (): void => {
@@ -205,6 +213,7 @@ export default function RecordForm(): JSX.Element {
         cellY: form.cellY,
         cropName: draftForFallback.cropName,
         imageUrls: form.imageUrls,
+        milestone: form.milestone,
         createdAt: now,
       });
       const signed = signEvent(draftEvent, kp.secretKey);
@@ -243,6 +252,7 @@ export default function RecordForm(): JSX.Element {
       cropName: d.cropName ?? "",
       content: d.content,
       imageUrls: d.imageUrls,
+      milestone: d.milestone ?? null,
     });
     setStatus({ kind: "info", message: "下書きを編集中です。投稿で送信、削除で破棄できます。" });
   };
@@ -295,6 +305,55 @@ export default function RecordForm(): JSX.Element {
             );
           })}
         </div>
+      </section>
+
+      {/* 節目イベント（Issue #27）
+          mypace 側でカード化して強調表示するため、ユーザーが明示的に「節目です」とマークする */}
+      <section className="space-y-2">
+        <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700">
+          <input
+            type="checkbox"
+            data-testid="fip-record-form-milestone-toggle"
+            checked={form.milestone !== null}
+            onChange={(e) => {
+              if (e.target.checked) {
+                // デフォルトは action に応じて推奨種別を当てる（収穫→harvest_complete、種まき→seeding_complete、それ以外→other）
+                const defaultMilestone: FarmMilestone =
+                  form.action === "harvest"
+                    ? "harvest_complete"
+                    : form.action === "seeding"
+                      ? "seeding_complete"
+                      : "other";
+                setForm((f) => ({ ...f, milestone: defaultMilestone }));
+              } else {
+                setForm((f) => ({ ...f, milestone: null }));
+              }
+            }}
+            className="h-4 w-4 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          <span>これは節目イベントです 🏆</span>
+        </label>
+        {form.milestone !== null && (
+          <div className="pl-6">
+            <p className="mb-1 text-xs text-neutral-500">
+              mypace タイムラインでカード風に強調表示されます。
+            </p>
+            <select
+              data-testid="fip-record-form-milestone-select"
+              value={form.milestone}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, milestone: e.target.value as FarmMilestone }))
+              }
+              className="w-full rounded border border-emerald-400 bg-emerald-50 px-2 py-1 text-sm"
+            >
+              {FARM_MILESTONES.map((m) => (
+                <option key={m} value={m}>
+                  {FARM_MILESTONE_ICONS[m]} {FARM_MILESTONE_LABELS_JA[m]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </section>
 
       {/* グリッド / セル */}
@@ -456,6 +515,14 @@ export default function RecordForm(): JSX.Element {
                   <span>{FARM_ACTION_ICONS[d.action]}</span>
                   <span>{FARM_ACTION_LABELS_JA[d.action]}</span>
                   {d.cropName && <span>· {d.cropName}</span>}
+                  {d.milestone && (
+                    <span
+                      className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                      data-testid={`fip-record-form-draft-milestone-${d.id}`}
+                    >
+                      {FARM_MILESTONE_ICONS[d.milestone]} {FARM_MILESTONE_LABELS_JA[d.milestone]}
+                    </span>
+                  )}
                 </div>
                 <p className="text-neutral-800 whitespace-pre-wrap break-words">{d.content}</p>
                 <div className="flex gap-3 pt-1">

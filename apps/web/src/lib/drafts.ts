@@ -4,7 +4,7 @@
 // オフライン時 or 投稿失敗時の draft を一時保管する。最大 100 件で古いものから trim。
 // SSR 時は localStorage が無いため、load は空配列を、save 系は no-op を返す。
 
-import type { WorkRecordDraft } from "@farm-in-pocket/shared";
+import { type WorkRecordDraft, isFarmMilestone } from "@farm-in-pocket/shared";
 
 export const DRAFTS_STORAGE_KEY = "fip:work-record-drafts-v1";
 export const DRAFTS_MAX = 100;
@@ -16,6 +16,11 @@ function hasWindow(): boolean {
 function isValidDraft(value: unknown): value is WorkRecordDraft {
   if (typeof value !== "object" || value === null) return false;
   const d = value as Record<string, unknown>;
+  // milestone は Issue #27 で追加。後方互換のため undefined も許容し、load 側で null に正規化する。
+  const milestoneOk =
+    d.milestone === undefined ||
+    d.milestone === null ||
+    (typeof d.milestone === "string" && isFarmMilestone(d.milestone));
   return (
     typeof d.id === "string" &&
     typeof d.action === "string" &&
@@ -25,7 +30,8 @@ function isValidDraft(value: unknown): value is WorkRecordDraft {
     (d.cellY === null || typeof d.cellY === "number") &&
     (d.cropName === null || typeof d.cropName === "string") &&
     Array.isArray(d.imageUrls) &&
-    typeof d.createdAt === "number"
+    typeof d.createdAt === "number" &&
+    milestoneOk
   );
 }
 
@@ -36,7 +42,11 @@ export function loadDrafts(): WorkRecordDraft[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidDraft);
+    // 旧スキーマ（milestone 未保存）の draft も読めるようにここで null に正規化する。
+    return parsed.filter(isValidDraft).map((d) => ({
+      ...d,
+      milestone: isFarmMilestone(d.milestone) ? d.milestone : null,
+    }));
   } catch {
     return [];
   }
