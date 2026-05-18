@@ -4,6 +4,7 @@ import { bytesToHex, generateSecretKey } from "@farm-in-pocket/shared";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setBackgroundReplaceEnabled } from "../lib/background-replace-prefs";
 import { SECRET_KEY_STORAGE_KEY } from "../lib/keys";
 import PhotoPicker from "./PhotoPicker";
 
@@ -150,6 +151,28 @@ describe("PhotoPicker", () => {
       expect(screen.getByTestId("fip-photo-picker-warning")).toBeInTheDocument();
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("遠景差し替え pref が ON でも placeholder 段階では何も表示しない (no-op、#43)", async () => {
+    seedKey();
+    setBackgroundReplaceEnabled(true);
+    const onChange = vi.fn();
+    render(<PhotoPicker urls={[]} onChange={onChange} />);
+
+    const input = screen.getByTestId("fip-photo-picker-input") as HTMLInputElement;
+    const file = new File([new Uint8Array(50)], "bg.png", { type: "image/png" });
+    const user = userEvent.setup();
+    await user.upload(input, file);
+
+    await screen.findByTestId("fip-filter-picker-modal");
+    await user.click(screen.getByTestId("fip-filter-picker-none"));
+    await user.click(screen.getByTestId("fip-filter-picker-confirm"));
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([FAKE_URL]);
+    });
+    // placeholder のため「遠景差し替え済み」表示は出ない (applied=false / not_integrated_yet)
+    expect(screen.queryByTestId("fip-photo-picker-bg-replaced")).not.toBeInTheDocument();
   });
 
   it("アップロード中は進捗 UI が表示される", async () => {

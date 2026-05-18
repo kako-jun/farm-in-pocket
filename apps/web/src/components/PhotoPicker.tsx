@@ -15,6 +15,7 @@
 
 import {
   type FilterPreset,
+  applyBackgroundReplace,
   applyFilterToFile,
   createNip98Signer,
   deleteFromNostrBuild,
@@ -22,6 +23,7 @@ import {
 import type { JSX } from "react";
 import { useId, useRef, useState } from "react";
 import { useImageUpload } from "../hooks/useImageUpload";
+import { getBackgroundReplaceEnabled } from "../lib/background-replace-prefs";
 import { getMyKeyPair } from "../lib/keys";
 import FilterPickerModal from "./FilterPickerModal";
 
@@ -45,6 +47,9 @@ export default function PhotoPicker({
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [warning, setWarning] = useState<string | null>(null);
+  // 遠景差し替え（modellhorizont 連携、#43）が実際に適用された件数。
+  // 現状は placeholder で常に 0 になるが、本番統合後はここを基に「遠景差し替え済み」表示が出る。
+  const [backgroundReplacedCount, setBackgroundReplacedCount] = useState<number>(0);
   // フィルタ確定待ちの File 群。null の間はモーダル非表示。
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
 
@@ -83,9 +88,12 @@ export default function PhotoPicker({
 
   const handleFilterConfirm = async (filter: FilterPreset, files: File[]): Promise<void> => {
     setPendingFiles(null);
+    setBackgroundReplacedCount(0);
 
     const collected: string[] = [];
     const failed: string[] = [];
+    const bgEnabled = getBackgroundReplaceEnabled();
+    let appliedCount = 0;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -101,6 +109,14 @@ export default function PhotoPicker({
         prepared = file;
       }
 
+      // 遠景差し替え（modellhorizont 連携、#43）。
+      // impl 未注入の placeholder 段階なので、bgEnabled が ON でも実体は no-op で
+      // applied=false (reason="not_integrated_yet") が返る。実体は本番統合時に
+      // impl: (f) => modellhorizont(f) を渡すだけで切り替わる。
+      const bgResult = await applyBackgroundReplace({ file: prepared, enabled: bgEnabled });
+      if (bgResult.applied) appliedCount++;
+      prepared = bgResult.file;
+
       const res = await uploadFile(prepared);
       if (res.success && res.url) {
         collected.push(res.url);
@@ -110,6 +126,7 @@ export default function PhotoPicker({
     }
 
     setProgress(null);
+    setBackgroundReplacedCount(appliedCount);
     if (failed.length > 0) setErrors(failed);
     if (collected.length > 0) onChange([...urls, ...collected]);
   };
@@ -172,6 +189,15 @@ export default function PhotoPicker({
           className="block text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1"
         >
           {warning}
+        </output>
+      )}
+
+      {backgroundReplacedCount > 0 && (
+        <output
+          data-testid="fip-photo-picker-bg-replaced"
+          className="block text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1"
+        >
+          遠景差し替え済み ({backgroundReplacedCount} 枚)
         </output>
       )}
 
