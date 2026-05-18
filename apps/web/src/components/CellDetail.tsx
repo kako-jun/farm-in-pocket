@@ -18,6 +18,7 @@ import type {
   Season,
   SoilType,
 } from "@farm-in-pocket/shared";
+import { daysSince, fadeOpacity } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import {
   fetchCellHistory,
@@ -487,11 +488,16 @@ function HistoryList(props: {
     <ul data-testid="fip-cell-detail-history" className="space-y-1">
       {all.map((m) => {
         const dateStr = m.rec.appliedAt.slice(0, 10);
+        // Issue #26: 各行に経過時間フェードを掛ける。古い行ほど薄い。
+        const schedule = m.kind === "nutrient" ? "fertilize" : "pesticide";
+        const opacity = fadeOpacity(daysSince(m.rec.appliedAt), schedule);
         if (m.kind === "nutrient") {
           return (
             <li
               key={`n-${m.rec.id}`}
               data-testid={`fip-cell-detail-history-nutrient-${m.rec.id}`}
+              data-fade-opacity={opacity.toFixed(2)}
+              style={{ opacity }}
               className="rounded border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-xs"
             >
               📅 {dateStr} 🍃 施肥 {NUTRIENT_LABELS[m.rec.nutrientType]}
@@ -510,6 +516,8 @@ function HistoryList(props: {
           <li
             key={`p-${m.rec.id}`}
             data-testid={`fip-cell-detail-history-pesticide-${m.rec.id}`}
+            data-fade-opacity={opacity.toFixed(2)}
+            style={{ opacity }}
             className="rounded border border-red-100 bg-red-50/50 px-2 py-1 text-xs"
           >
             📅 {dateStr} 🛡️ 農薬 {PESTICIDE_LABELS[m.rec.pesticideType]}
@@ -579,16 +587,13 @@ function PhSection(props: {
     value: r.value,
   }));
 
-  // リストは新しい順に直近 10 件
-  // 古いほど薄く → 表示は新しい→古いの順だが、records 内 index が小さいほど古い。
-  // 直近 10 件: 末尾 10 件を逆順で取り出す。
-  const recent: { rec: PhRecord; ageIdx: number; total: number }[] = (() => {
-    const tail = records.slice(-10); // 古いから新しい
-    return tail.reverse().map((rec, i) => {
-      // tail を reverse したので i=0 が最新, i=tail.length-1 が最も古い
-      // 古いほどフェードしたいので「i が大きいほど薄い」になる
-      return { rec, ageIdx: i, total: tail.length };
-    });
+  // リストは新しい順に直近 10 件。Issue #26: 経過日数ベースの fadeOpacity に統一。
+  const recent: { rec: PhRecord; opacity: number }[] = (() => {
+    const tail = records.slice(-10).reverse(); // 新しい→古い
+    return tail.map((rec) => ({
+      rec,
+      opacity: fadeOpacity(daysSince(rec.measuredAt), "ph"),
+    }));
   })();
 
   return (
@@ -627,30 +632,21 @@ function PhSection(props: {
       {/* 時系列グラフ */}
       <PhTimelineChart data={chartData} />
 
-      {/* 直近 10 件 (古いほど薄く) */}
+      {/* 直近 10 件 (古いほど薄く / Issue #26 fade schedule "ph") */}
       {recent.length > 0 && (
         <ul data-testid="fip-cell-detail-ph-list" className="space-y-1">
-          {recent.map(({ rec, ageIdx, total }) => {
-            // ageIdx=0 が最新 → 黒、ageIdx=total-1 が最古 → 薄い
-            // Tailwind: 最新 text-neutral-800, 中間 text-neutral-500, 最古 text-neutral-400
-            const fade =
-              ageIdx === 0
-                ? "text-neutral-800"
-                : ageIdx >= total - 2 && total >= 3
-                  ? "text-neutral-400"
-                  : "text-neutral-500";
-            return (
-              <li
-                key={`ph-${rec.id}`}
-                data-testid={`fip-cell-detail-ph-row-${rec.id}`}
-                data-fade-class={fade}
-                className={`rounded border border-cyan-100 bg-white px-2 py-1 text-xs ${fade}`}
-              >
-                📅 {rec.measuredAt.slice(0, 10)} ・ pH {rec.value.toFixed(1)}
-                {rec.note && <span> ・ {rec.note}</span>}
-              </li>
-            );
-          })}
+          {recent.map(({ rec, opacity }) => (
+            <li
+              key={`ph-${rec.id}`}
+              data-testid={`fip-cell-detail-ph-row-${rec.id}`}
+              data-fade-opacity={opacity.toFixed(2)}
+              style={{ opacity }}
+              className="rounded border border-cyan-100 bg-white px-2 py-1 text-xs text-neutral-800"
+            >
+              📅 {rec.measuredAt.slice(0, 10)} ・ pH {rec.value.toFixed(1)}
+              {rec.note && <span> ・ {rec.note}</span>}
+            </li>
+          ))}
         </ul>
       )}
     </div>

@@ -401,11 +401,15 @@ describe("CellDetail", () => {
     expect(screen.getByTestId("fip-cell-detail-ph-row-1")).toBeInTheDocument();
     expect(screen.getByTestId("fip-cell-detail-ph-row-2")).toBeInTheDocument();
     expect(screen.getByTestId("fip-cell-detail-ph-row-3")).toBeInTheDocument();
-    // 最新行（id=3）は濃く、最古行（id=1）はフェード
+    // Issue #26: 最新行（id=3）と最古行（id=1）で opacity が異なる（古いほど薄い）。
+    // 実日時依存を避けるため両者の相対関係だけ検証する。
     const newest = screen.getByTestId("fip-cell-detail-ph-row-3");
     const oldest = screen.getByTestId("fip-cell-detail-ph-row-1");
-    expect(newest.getAttribute("data-fade-class")).toBe("text-neutral-800");
-    expect(oldest.getAttribute("data-fade-class")).toBe("text-neutral-400");
+    const newOp = Number(newest.getAttribute("data-fade-opacity"));
+    const oldOp = Number(oldest.getAttribute("data-fade-opacity"));
+    expect(newOp).toBeGreaterThanOrEqual(oldOp);
+    expect(newOp).toBeGreaterThan(0);
+    expect(oldOp).toBeGreaterThan(0);
     // グラフが描画されている (3 件)
     expect(screen.getByTestId("fip-ph-chart")).toBeInTheDocument();
   });
@@ -633,5 +637,60 @@ describe("CellDetail", () => {
     expect(row2.textContent).toContain("夏");
     expect(row2.textContent).toContain("バジル");
     expect(row2.textContent).toContain("シソ科");
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #26: 経過時間フェード
+  // -------------------------------------------------------------------------
+
+  it("Issue #26: 古い施肥履歴行ほど opacity が低くフェードする", async () => {
+    const oldDate = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    const newDate = new Date(Date.now() - 1 * 86_400_000).toISOString();
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: {
+        nutrients: [
+          {
+            id: 200,
+            cellId: 11,
+            nutrientType: "nitrogen",
+            amount: 5,
+            amountUnit: "g",
+            appliedAt: newDate,
+            note: null,
+          },
+          {
+            id: 201,
+            cellId: 11,
+            nutrientType: "potassium",
+            amount: 3,
+            amountUnit: "g",
+            appliedAt: oldDate,
+            note: null,
+          },
+        ],
+        pesticides: [],
+      },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/ph(\?|$)/.test(u),
+      response: { records: [] },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-history-nutrient-200")).toBeInTheDocument();
+    });
+    const newRow = screen.getByTestId("fip-cell-detail-history-nutrient-200");
+    const oldRow = screen.getByTestId("fip-cell-detail-history-nutrient-201");
+    const newOp = Number(newRow.getAttribute("data-fade-opacity"));
+    const oldOp = Number(oldRow.getAttribute("data-fade-opacity"));
+    // 新しい行 (1 日前) は plateau 1.0、古い行 (90 日前) は 0.15 付近
+    expect(newOp).toBeCloseTo(1.0, 1);
+    expect(oldOp).toBeLessThan(0.3);
+    expect(oldOp).toBeGreaterThan(0);
   });
 });
