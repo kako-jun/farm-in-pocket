@@ -12,7 +12,7 @@ import { wmoToLabel } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import { fetchProfile, fetchWateringDue, fetchWeather, recordWatering } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
-import { pushAction } from "../lib/offline-queue";
+import { pushAction, queueLength, subscribeQueueChanges } from "../lib/offline-queue";
 
 function isCurrentlyOnline(): boolean {
   if (typeof navigator === "undefined") return true;
@@ -37,6 +37,8 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
   // Issue #32: プロフィール / 当日の気象データ
   const [profile, setProfile] = useState<ProfileRecord | null | undefined>(undefined);
   const [weather, setWeather] = useState<WeatherCacheRecord | null>(null);
+  // SHOULD-8: オフラインキューに積まれた保留中件数
+  const [pendingCount, setPendingCount] = useState<number>(0);
 
   // props.pubkey が無ければ localStorage から拾う。鍵が無ければ null のまま。
   useEffect(() => {
@@ -63,6 +65,15 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
     if (!pubkey) return;
     void reload(pubkey);
   }, [pubkey, reload]);
+
+  // SHOULD-8: mount 時に件数を取り、他タブ変更も購読する
+  useEffect(() => {
+    setPendingCount(queueLength());
+    const unsubscribe = subscribeQueueChanges(() => {
+      setPendingCount(queueLength());
+    });
+    return unsubscribe;
+  }, []);
 
   // Issue #32: プロフィール → 地域があれば今日の気象を取得
   useEffect(() => {
@@ -113,6 +124,7 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
         pubkey,
         queuedAt: Date.now(),
       });
+      setPendingCount(queueLength()); // SHOULD-8: 楽観 update 後の再カウント
       setRecords((prev) => (prev ?? []).filter((r) => r.plantingId !== plantingId));
       setBusyIds((prev) => {
         const next = new Set(prev);
@@ -135,6 +147,7 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
         pubkey,
         queuedAt: Date.now(),
       });
+      setPendingCount(queueLength()); // SHOULD-8: 楽観 update 後の再カウント
       void e;
       setRecords((prev) => (prev ?? []).filter((r) => r.plantingId !== plantingId));
     } finally {
@@ -197,6 +210,16 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
       className="w-full max-w-md space-y-2 rounded-lg border border-sky-200 bg-sky-50/50 p-4"
     >
       <h2 className="text-base font-semibold text-sky-900">💧 今日のおせわ</h2>
+      {/* SHOULD-8: オフラインキュー保留中件数。0 件のときは出さない */}
+      {pendingCount > 0 && (
+        <p
+          data-testid="fip-watering-due-pending"
+          data-count={pendingCount}
+          className="rounded border border-sky-300 bg-white px-3 py-2 text-xs text-sky-800"
+        >
+          保留中 {pendingCount} 件（オンライン復帰時に送信されます）
+        </p>
+      )}
       {renderWeatherBanner()}
       {error && (
         <p data-testid="fip-watering-due-error" className="text-xs text-red-600">
