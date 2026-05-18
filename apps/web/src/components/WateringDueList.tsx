@@ -12,6 +12,12 @@ import { wmoToLabel } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useState } from "react";
 import { fetchProfile, fetchWateringDue, fetchWeather, recordWatering } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
+import { pushAction } from "../lib/offline-queue";
+
+function isCurrentlyOnline(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine !== false;
+}
 
 function todayYmd(): string {
   return new Date().toISOString().slice(0, 10);
@@ -99,15 +105,38 @@ export default function WateringDueList(props: WateringDueListProps): JSX.Elemen
       next.add(plantingId);
       return next;
     });
+    // Issue #42: 圏外時はキューに積んで楽観 update のみ実施。
+    if (!isCurrentlyOnline()) {
+      pushAction({
+        kind: "recordWatering",
+        plantingId,
+        pubkey,
+        queuedAt: Date.now(),
+      });
+      setRecords((prev) => (prev ?? []).filter((r) => r.plantingId !== plantingId));
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(plantingId);
+        return next;
+      });
+      return;
+    }
     try {
       await recordWatering(plantingId, pubkey);
       // 楽観 update: その行を records から消す（next_due_at は今日 + interval になり、
       // 今日のリストには載らないはず）。失敗したら reload で復旧。
       setRecords((prev) => (prev ?? []).filter((r) => r.plantingId !== plantingId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
-      // 失敗時は再読み込みして表示を巻き戻す
-      void reload(pubkey);
+      // Issue #42: ネットワーク失敗時はキューに積んで楽観 update を維持。
+      // UI 上は「やった」と見せ続け、復帰時に flusher が fire する。
+      pushAction({
+        kind: "recordWatering",
+        plantingId,
+        pubkey,
+        queuedAt: Date.now(),
+      });
+      void e;
+      setRecords((prev) => (prev ?? []).filter((r) => r.plantingId !== plantingId));
     } finally {
       setBusyIds((prev) => {
         const next = new Set(prev);

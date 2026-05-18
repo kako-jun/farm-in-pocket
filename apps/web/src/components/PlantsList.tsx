@@ -12,6 +12,7 @@ import { type PlantSummary, isSeasonalPlantForNow } from "@farm-in-pocket/shared
 import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { type SearchPlantsParams, searchPlantsAdvanced } from "../lib/grid-api";
+import { cachePlants, loadCachedPlants } from "../lib/offline-cache";
 
 const CATEGORY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "", label: "すべて" },
@@ -72,10 +73,20 @@ export default function PlantsList(): JSX.Element {
       searchPlantsAdvanced(params)
         .then((plants) => {
           if (cancelled) return;
+          // Issue #42: 取得成功時はマスタを localStorage にキャッシュ。
+          //   plants マスタは全ユーザー共通なので絞り込み無しの結果が一番有用だが、
+          //   ここではフィルタ適用後の結果でも「最後に見た plants」として最低限の fallback になる。
+          cachePlants(plants);
           setStatus({ kind: "ready", plants });
         })
         .catch((e: unknown) => {
           if (cancelled) return;
+          // Issue #42: オフライン / API ダウン時は最後のキャッシュにフォールバック。
+          const cached = loadCachedPlants();
+          if (cached !== null) {
+            setStatus({ kind: "ready", plants: cached });
+            return;
+          }
           setStatus({ kind: "error", message: e instanceof Error ? e.message : String(e) });
         });
     }, 300);

@@ -23,6 +23,7 @@ import {
   updateGrid,
 } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
+import { cacheGrids, loadCachedGrids } from "../lib/offline-cache";
 import CellDetail from "./CellDetail";
 import GridThumbnail from "./GridThumbnail";
 
@@ -253,6 +254,9 @@ export default function GridEditor(): JSX.Element {
     try {
       // Issue #40: summary=true でセル統計を、includeArchived=showArchived でアーカイブ表示制御。
       const list = await listGrids(pk, { includeArchived, summary: true });
+      // Issue #42: 取得成功時は最新スナップショットを localStorage にキャッシュしておき、
+      //   次回のオフライン起動で fallback できるようにする。
+      cacheGrids(pk, list);
       setGrids(list);
       // アクティブグリッド復元: localStorage の ID が現存しなければ
       // 「アクティブ（非アーカイブ）の先頭」にフォールバック。
@@ -264,7 +268,21 @@ export default function GridEditor(): JSX.Element {
       setActiveId(next?.id ?? null);
       hydratedRef.current = true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "load failed");
+      // Issue #42: オフライン or API ダウン時はキャッシュ済みの grids にフォールバックする。
+      const cached = loadCachedGrids(pk);
+      if (cached !== null) {
+        setGrids(cached);
+        const stored =
+          typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_GRID_KEY) : null;
+        const found = stored != null ? cached.find((g) => g.id === stored) : undefined;
+        const firstActive = cached.find((g) => g.archivedAt == null) ?? cached[0] ?? null;
+        const next = found ?? firstActive;
+        setActiveId(next?.id ?? null);
+        hydratedRef.current = true;
+        // エラー表示は出さず、キャッシュで通常通り表示する（圏外で意識させない）。
+      } else {
+        setError(e instanceof Error ? e.message : "load failed");
+      }
     } finally {
       setLoading(false);
     }

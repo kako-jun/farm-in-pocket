@@ -3,6 +3,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { OFFLINE_QUEUE_STORAGE_KEY } from "../lib/offline-queue";
 import WateringDueList from "./WateringDueList";
 
 interface MockRoute {
@@ -210,5 +211,58 @@ describe("WateringDueList", () => {
     const overdue = screen.getByTestId("fip-watering-due-overdue-9");
     expect(overdue).toBeInTheDocument();
     expect(overdue.textContent).toContain("5");
+  });
+
+  it("圏外で「💧 やった」を押すとオフラインキューに積まれ、UI 上は完了に見える (Issue #42)", async () => {
+    routes.push({
+      match: (u) => /\/api\/users\/.+\/watering-due\?/.test(u),
+      response: {
+        records: [
+          {
+            plantingId: 11,
+            cellId: 21,
+            gridId: "g1",
+            gridName: "南プランター",
+            x: 0,
+            y: 1,
+            plantId: 2,
+            plantName: "ピーマン",
+            intervalDays: 2,
+            lastWateredAt: "2026-05-16",
+            nextDueAt: "2026-05-18",
+            daysOverdue: 0,
+          },
+        ],
+      },
+    });
+    const original = Object.getOwnPropertyDescriptor(window.navigator, "onLine");
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, get: () => false });
+    try {
+      const user = userEvent.setup();
+      render(<WateringDueList pubkey={"a".repeat(64)} />);
+      await waitFor(() => {
+        expect(screen.getByTestId("fip-watering-due-row-11")).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId("fip-watering-due-water-11"));
+
+      // 楽観 update で行が消える
+      await waitFor(() => {
+        expect(screen.queryByTestId("fip-watering-due-row-11")).toBeNull();
+      });
+
+      // キューに recordWatering が積まれている
+      const raw = localStorage.getItem(OFFLINE_QUEUE_STORAGE_KEY);
+      const queue = JSON.parse(raw ?? "[]") as { kind: string; plantingId: number }[];
+      expect(queue).toHaveLength(1);
+      expect(queue[0]?.kind).toBe("recordWatering");
+      expect(queue[0]?.plantingId).toBe(11);
+
+      // POST /water は飛ばしていない
+      expect(fetchCalls.find((c) => /\/water$/.test(c.url))).toBeUndefined();
+    } finally {
+      if (original) {
+        Object.defineProperty(window.navigator, "onLine", original);
+      }
+    }
   });
 });
