@@ -117,6 +117,7 @@ describe("grid-api", () => {
 
   it("createPlanting は POST /api/grids/:id/cells/:x/:y/plantings に投げる", async () => {
     mockFetch({
+      ok: true,
       planting: {
         id: 7,
         cellId: 11,
@@ -126,12 +127,76 @@ describe("grid-api", () => {
         note: null,
       },
     });
-    const p = await createPlanting("g7", "pk", 2, 3, { plantId: 1, seedingDate: "2026-05-17" });
+    const result = await createPlanting("g7", "pk", 2, 3, {
+      plantId: 1,
+      seedingDate: "2026-05-17",
+    });
     expect(first().url).toBe("/api/grids/g7/cells/2/3/plantings");
     expect(first().init?.method).toBe("POST");
     const body = JSON.parse(String(first().init?.body));
     expect(body).toMatchObject({ plantId: 1, pubkey: "pk" });
-    expect(p.id).toBe(7);
+    if (!result.planted) throw new Error("expected planted=true");
+    expect(result.planting.id).toBe(7);
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #23: 連作障害警告
+  // -------------------------------------------------------------------------
+
+  it("createPlanting は API が rotation_warning を返すと planted=false で結果を返す", async () => {
+    mockFetch({
+      ok: false,
+      error: "rotation_warning",
+      rotationWarning: {
+        family: "ナス科",
+        lastPlantedAt: "2024-04-01",
+        lastPlantName: "トマト",
+        recommendedWaitYears: 4,
+        yearsElapsed: 2.1,
+      },
+    });
+    const result = await createPlanting("g7", "pk", 2, 3, {
+      plantId: 1,
+      confirmRotation: false,
+    });
+    // body に confirmRotation: false が乗っているか確認
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ plantId: 1, pubkey: "pk", confirmRotation: false });
+    expect(result.planted).toBe(false);
+    if (result.planted) throw new Error("expected planted=false");
+    expect(result.rotationWarning.family).toBe("ナス科");
+    expect(result.rotationWarning.recommendedWaitYears).toBe(4);
+    expect(result.rotationWarning.lastPlantName).toBe("トマト");
+  });
+
+  it("createPlanting は警告が出ても confirmRotation: true なら planted=true + rotationWarning を返す", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 21,
+        cellId: 11,
+        plantId: 1,
+        seedingDate: "2026-05-17",
+        plantingDate: null,
+        note: null,
+      },
+      rotationWarning: {
+        family: "ナス科",
+        lastPlantedAt: "2024-04-01",
+        lastPlantName: "トマト",
+        recommendedWaitYears: 4,
+        yearsElapsed: 2.1,
+      },
+    });
+    const result = await createPlanting("g7", "pk", 2, 3, {
+      plantId: 1,
+      confirmRotation: true,
+    });
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toMatchObject({ confirmRotation: true });
+    if (!result.planted) throw new Error("expected planted=true");
+    expect(result.planting.id).toBe(21);
+    expect(result.rotationWarning?.family).toBe("ナス科");
   });
 
   it("deletePlanting は DELETE /api/plantings/:id?pubkey= を叩く", async () => {

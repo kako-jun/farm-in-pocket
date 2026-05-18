@@ -5,6 +5,7 @@ import type {
   GridLighting,
   GridRecord,
   PlantSummary,
+  RotationWarning,
   SoilType,
 } from "@farm-in-pocket/shared";
 import { type JSX, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -168,6 +169,14 @@ export default function GridEditor(): JSX.Element {
 
   // サイズ変更確認
   const [resizeConfirm, setResizeConfirm] = useState<{ sizeX: number; sizeY: number } | null>(null);
+
+  // Issue #23: 連作障害警告ダイアログ。
+  // PlantPicker で選んだ作物が、対象座標の crop_history に同 family の最新行を持つときに開く。
+  // OK 押下で confirmRotation: true を再 POST する。キャンセルでフォーム（plant モーダル）に戻す。
+  const [rotationConfirm, setRotationConfirm] = useState<{
+    plant: PlantSummary;
+    warning: RotationWarning;
+  } | null>(null);
 
   // タブ DOM 参照: activeId が変わったときに横スクロールで中央寄せ
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -400,19 +409,50 @@ export default function GridEditor(): JSX.Element {
     }
   };
 
-  const handlePlantSelected = async (plant: PlantSummary): Promise<void> => {
+  // Issue #23: 連作障害警告フロー対応。
+  // 1) 初回 POST は `confirmRotation: false` で送る → 警告条件成立なら planted=false で返ってくる。
+  // 2) その場合は確認ダイアログ（rotationConfirm）を出し、OK を押されたら confirmRotation: true で再 POST する。
+  // 3) 警告条件不成立、または再 POST 成功なら通常通り reload + setModal(null)。
+  const runCreatePlanting = async (
+    plant: PlantSummary,
+    confirmRotation: boolean,
+  ): Promise<void> => {
     if (!grid || !openCell || !pubkey) return;
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await createPlanting(grid.id, pubkey, openCell.x, openCell.y, {
+      const result = await createPlanting(grid.id, pubkey, openCell.x, openCell.y, {
         plantId: plant.id,
         seedingDate: today,
+        confirmRotation,
       });
+      if (!result.planted) {
+        // 警告のみ。確認ダイアログへ。
+        setRotationConfirm({ plant, warning: result.rotationWarning });
+        return;
+      }
+      setRotationConfirm(null);
       await reload(pubkey);
       setModal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "plant failed");
     }
+  };
+
+  const handlePlantSelected = async (plant: PlantSummary): Promise<void> => {
+    await runCreatePlanting(plant, false);
+  };
+
+  const handleRotationConfirmOk = async (): Promise<void> => {
+    if (!rotationConfirm) return;
+    const plant = rotationConfirm.plant;
+    setRotationConfirm(null);
+    await runCreatePlanting(plant, true);
+  };
+
+  const handleRotationConfirmCancel = (): void => {
+    // 元の plant モーダル（PlantPicker）へ戻す。フォームを閉じたい場合はもう一度キャンセルできるよう
+    // modal は plant のままにする。
+    setRotationConfirm(null);
   };
 
   const replaceCell = (cell: CellRecord): void => {
@@ -878,6 +918,49 @@ export default function GridEditor(): JSX.Element {
               <button
                 type="button"
                 onClick={() => setResizeConfirm(null)}
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
+                style={{ minHeight: 44 }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rotationConfirm && (
+        <div
+          data-testid="fip-rotation-confirm"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+        >
+          <div className="space-y-4 rounded-lg bg-white p-5 max-w-md">
+            <h3 className="text-base font-semibold" data-testid="fip-rotation-confirm-title">
+              連作障害の警告
+            </h3>
+            <p className="text-sm text-neutral-700" data-testid="fip-rotation-confirm-message">
+              このセルでは {rotationConfirm.warning.yearsElapsed}年前に{" "}
+              <strong>{rotationConfirm.warning.family}</strong> の 「
+              {rotationConfirm.warning.lastPlantName}」を植えています（最終植え付け:{" "}
+              {rotationConfirm.warning.lastPlantedAt}）。
+              <br />
+              連作障害を避けるため、{rotationConfirm.warning.family} の植え付けは{" "}
+              <strong>{rotationConfirm.warning.recommendedWaitYears}年</strong>{" "}
+              空けるのが理想です。それでも植えますか？
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                data-testid="fip-rotation-confirm-ok"
+                onClick={() => void handleRotationConfirmOk()}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+                style={{ minHeight: 44 }}
+              >
+                それでも植える
+              </button>
+              <button
+                type="button"
+                data-testid="fip-rotation-confirm-cancel"
+                onClick={handleRotationConfirmCancel}
                 className="rounded-lg border border-neutral-300 px-4 py-2 text-sm"
                 style={{ minHeight: 44 }}
               >

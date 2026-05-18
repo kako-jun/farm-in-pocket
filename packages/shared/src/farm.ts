@@ -69,3 +69,70 @@ export interface WorkRecordDraft {
 
 /** 投稿テキストの最大文字数。Twitter 互換で 280。 */
 export const WORK_RECORD_MAX_CONTENT_LENGTH = 280;
+
+// =============================================================================
+// 連作障害（rotation） / Issue #23
+// =============================================================================
+//
+// 同じ科を続けて同じ座標に植えると連作障害（土壌の養分偏り・病害蓄積）が出やすい。
+// ここでは科ごとに「最低どれくらい空けたいか（年）」を集計済みの参考値として持つ。
+// 数値は園芸書・JA 等で広く流通している保守側の推奨年数を採用している:
+//   - ナス科: 3-4 年 → 4
+//   - ウリ科: 3 年 → 3
+//   - アブラナ科: 2-3 年 → 3
+//   - マメ科: 2-3 年 → 3
+//   - キク科: 1-2 年 → 2
+//   - セリ科: 1-2 年 → 2
+//   - ヒルガオ科（さつまいも）: 2 年
+//   - ヒガンバナ科（ねぎ）: 2 年
+//   - その他: 1 年（DEFAULT_ROTATION_WAIT_YEARS）
+
+/** 科ごとの連作回避推奨年数（years to wait before planting the same family again）。 */
+export const ROTATION_WAIT_YEARS: Record<string, number> = {
+  ナス科: 4,
+  ウリ科: 3,
+  アブラナ科: 3,
+  マメ科: 3,
+  キク科: 2,
+  セリ科: 2,
+  ヒルガオ科: 2, // さつまいも
+  ヒガンバナ科: 2, // ねぎ
+  シソ科: 1, // バジル・しそ
+  ユリ科: 4, // チューリップ・にんにく
+  サトイモ科: 3, // モンステラ等
+  ヒユ科: 1, // ほうれん草等
+  サボテン科: 1, // サボテン
+};
+
+/** 上記マップに含まれない科に対する既定値。 */
+export const DEFAULT_ROTATION_WAIT_YEARS = 1;
+
+/** 科名から推奨待機年数を引く。未知科は DEFAULT_ROTATION_WAIT_YEARS。 */
+export function getWaitYears(family: string): number {
+  if (!family) return DEFAULT_ROTATION_WAIT_YEARS;
+  return ROTATION_WAIT_YEARS[family] ?? DEFAULT_ROTATION_WAIT_YEARS;
+}
+
+/**
+ * 連作障害の警告ペイロード。
+ *
+ * API (`POST /api/grids/:gridId/cells/:x/:y/plantings`) は、対象座標の直近 crop_history で
+ * 同 family の最新行を見つけたとき、これを返す。
+ *
+ * - `confirmRotation: false`（既定）: 警告条件が成立した場合は planting を作らず、
+ *   `{ ok: false, error: "rotation_warning", rotationWarning }` を返す。
+ * - `confirmRotation: true`: 警告条件が成立しても planting を作り、
+ *   `{ ok: true, planting, rotationWarning }` を返す（警告は表示しつつ進めるため）。
+ */
+export interface RotationWarning {
+  /** 直近で植えていた科（凍結値）。 */
+  family: string;
+  /** 直近で同 family を植えた日（YYYY-MM-DD）。 */
+  lastPlantedAt: string;
+  /** 直近で同 family として植えた作物名（凍結値）。 */
+  lastPlantName: string;
+  /** その family の推奨待機年数。 */
+  recommendedWaitYears: number;
+  /** 直近の植え付けから現在までの経過年数（小数 1 桁、365.25 日基準）。 */
+  yearsElapsed: number;
+}

@@ -1,4 +1,4 @@
-import type { Season } from "@farm-in-pocket/shared";
+import { type RotationWarning, type Season, getWaitYears } from "@farm-in-pocket/shared";
 import { Hono } from "hono";
 import { requireGridOwner, requirePlantingOwner } from "../lib/auth";
 
@@ -58,7 +58,13 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
     seedingDate?: unknown;
     plantingDate?: unknown;
     note?: unknown;
+    confirmRotation?: unknown;
   }>();
+  // Issue #23: 連作障害警告フラグ。
+  // - undefined / true → 警告条件成立でも planting を作る（"分かった上で植える"）。
+  //   既定で true 扱いなのは、旧クライアント（フラグ未送信）の互換性を壊さないため。
+  // - false → 警告条件成立時は planting を作らず警告だけ返す。
+  const confirmRotation: boolean = body.confirmRotation !== false;
 
   const auth = await requireGridOwner(c.env.DB, gridId, body.pubkey);
   if (!auth.ok) return c.json({ error: auth.error }, auth.status);
@@ -72,10 +78,62 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   const note = typeof body.note === "string" ? body.note : null;
 
   // Issue #22: crop_history に固定保存するため family を denormalize で取る。
+  // Issue #23: 同時に作物名（japanese_name）も先取りする。警告ペイロードに含める旧 plant 名は
+  // crop_history.plant_id 経由で JOIN で引くため、ここではこの planting で植える側の名前は持たない。
   const plant = await c.env.DB.prepare("SELECT id, family FROM plants WHERE id = ?")
     .bind(plantId)
     .first<{ id: number; family: string }>();
   if (!plant) return c.json({ error: "plant not found" }, 404);
+
+  // Issue #23: 連作障害警告チェック。
+  // 同じ座標 (grid_id, x, y) の crop_history に同 family の最新行があれば、推奨待機年数と比較する。
+  // ended_at が NULL の行（=今まさに植わっている）も対象に含めて良い: 同 family が継続中なら警告すべき。
+  // ただし削除時の DELETE 経路で history は残るので、計算は planted_at を基準にする。
+  // plant_name は plants 経由（JOIN）。plants 削除済みなら null になるが、その場合は family だけで警告できる。
+  const lastSameFamily = await c.env.DB.prepare(
+    `SELECT ch.planted_at AS planted_at, p.japanese_name AS plant_name
+       FROM crop_history ch
+       LEFT JOIN plants p ON p.id = ch.plant_id
+      WHERE ch.grid_id = ?
+        AND ch.x = ?
+        AND ch.y = ?
+        AND ch.plant_family = ?
+      ORDER BY ch.planted_at DESC, (ch.ended_at IS NULL) DESC, ch.id DESC
+      LIMIT 1`,
+  )
+    .bind(gridId, x, y, plant.family)
+    .first<{ planted_at: string | null; plant_name: string | null }>();
+
+  let rotationWarning: RotationWarning | null = null;
+  if (lastSameFamily?.planted_at) {
+    const recommendedWaitYears = getWaitYears(plant.family);
+    // 経過年数 = (today - lastPlantedAt) / 365.25 日。
+    // 同じ日に植え替え（同年内）は yearsElapsed = 0 になる。0 < recommended なので警告対象。
+    const lastDate = new Date(`${lastSameFamily.planted_at.slice(0, 10)}T00:00:00Z`);
+    const now = new Date();
+    let yearsElapsed = 0;
+    if (!Number.isNaN(lastDate.getTime())) {
+      const ms = now.getTime() - lastDate.getTime();
+      yearsElapsed = Math.max(0, Math.round((ms / (1000 * 60 * 60 * 24 * 365.25)) * 10) / 10);
+    }
+    if (yearsElapsed < recommendedWaitYears) {
+      rotationWarning = {
+        family: plant.family,
+        lastPlantedAt: lastSameFamily.planted_at.slice(0, 10),
+        // plants が消えていたら "(削除済み)" にフォールバック。連作の重要情報は family なので、
+        // 名前が無くても警告自体は出す。
+        lastPlantName: lastSameFamily.plant_name ?? "(削除済み)",
+        recommendedWaitYears,
+        yearsElapsed,
+      };
+    }
+  }
+
+  // 警告条件成立 + クライアントが「警告だけ欲しい」と明示 (confirmRotation=false) なら、
+  // ここで打ち切って planting は作らない。
+  if (rotationWarning && !confirmRotation) {
+    return c.json({ ok: false, error: "rotation_warning", rotationWarning }, 200);
+  }
 
   // cell が無ければ作る（grid 存在チェックも）
   const grid = await c.env.DB.prepare("SELECT id, size_x, size_y FROM grids WHERE id = ?")
@@ -154,6 +212,7 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
 
   return c.json(
     {
+      ok: true,
       planting: {
         id: newId,
         cellId: cell.id,
@@ -162,6 +221,9 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
         plantingDate,
         note,
       },
+      // Issue #23: 警告条件成立で確認済み（confirmRotation=true）の場合は警告ペイロードも返し、
+      // クライアントは「警告は出ていたが進めた」ことを記録/表示できる。条件不成立なら省略。
+      ...(rotationWarning ? { rotationWarning } : {}),
     },
     201,
   );
