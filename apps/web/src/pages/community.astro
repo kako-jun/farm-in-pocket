@@ -1,6 +1,9 @@
 ---
 import CommunityList from "../components/CommunityList";
 import "../styles/global.css";
+
+// SSG (静的書き出し)。動的な /community/[npub] だけ SSR。
+export const prerender = true;
 ---
 
 <html lang="ja">

@@ -170,7 +170,17 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 
 ## コミュニティ（みんな）
 
-`/community` ページから「`#farm-in-pocket` を付けて投稿しているユーザー」を一覧できます（Issue #18）。横長バナーカード（バナー + 丸アイコン + 表示名 + 最新作業）をスクロールできるシンプルな一覧で、各カードはタップで `/community/<npub>`（**他人の畑ページ** — 中身は Issue #19 で実装）に遷移します。
+`/community` ページから「`#farm-in-pocket` を付けて投稿しているユーザー」を一覧できます（Issue #18）。横長バナーカード（バナー + 丸アイコン + 表示名 + 最新作業）をスクロールできるシンプルな一覧で、各カードはタップで `/community/<npub>`（**他人の畑ページ** — Issue #19）に遷移します。
+
+### 他人の畑ページ `/community/<npub>` （Issue #19）
+
+`/community/<npub>` はそのユーザーの公開プロフィール + 投稿タイムラインを表示する SSR ページです。Astro の動的ルートで実装し、Cloudflare Pages Functions として配信されます（既存の `/`, `/grid`, `/record`, `/settings`, `/community` は引き続き SSG）。
+
+- **グリッド間取りは非公開**: D1 に保存しているマイ畑の cells/plantings 情報は他人の畑ページからは絶対に取得しません。代わりに「5×5 のぼかしグリッド + `🔒 間取りは公開されていません` ラベル」だけを表示します。プライバシー方針として「日記＝D1（自分専用）、写真と作業ログ＝Nostr（公開）」を分離している方針の徹底です。
+- **タイムラインは Nostr リレーから直接**: `kind:1` / `["#t", "farm-in-pocket"]` / `authors=<対象 pubkey>` で直近 50 件を `packages/shared/src/relay/` の WebSocket クライアントで取得します。`farm-action` / `farm-crop` / `content` / `image` タグ + 相対時刻を 1 件ずつカード表示。
+- **Follow / Unfollow は kind:3 (NIP-02) で発行**: 鍵を端末に保存していれば、ボタンクリックで自分の最新 kind:3 contact list を取得 → 追加/削除 → 再署名して mypace の `/api/publish` 経由で発行します。ローカルキャッシュは `fip:my-contacts-v1`。
+- **Stella リアクションは Issue #27 で実装予定**: 各タイムラインカードに 5 色（赤/橙/黄/緑/青）のドット placeholder を並べていますが、現状は disabled です。実体は mypace 側の stella システム連携（**Issue #27 mypace 投稿カード連携**）で対応します。
+- **無効な npub**: bech32 形式が壊れている場合はクライアント側で「見つかりませんでした」と表示します（SSR 段階で 404 にはしません）。
 
 ### 表示の仕組み
 

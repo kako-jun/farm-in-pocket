@@ -3,6 +3,9 @@ import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import AccountSetup from "../components/AccountSetup";
 import PrivacyNotice from "../components/PrivacyNotice";
 import "../styles/global.css";
+
+// SSG (静的書き出し)。動的ルートの追加で astro.config が server モードになったため明示。
+export const prerender = true;
 ---
 
 <html lang="ja">
