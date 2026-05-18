@@ -1,0 +1,110 @@
+---
+// Issue: kako-jun/farm-in-pocket#20
+// 4 タブのボトムナビ（マイ畑 / 記録 / みんな / 設定）。
+// MainLayout から呼ばれ、全ページ共通で最下部に固定表示する。
+//
+// アクティブ判定は Astro.url.pathname の startsWith。`/` は完全一致でないと
+// 全ページがマッチしてしまうため、`/` だけは別扱い。
+//
+// スタイルは控えめのスキュモーフィズム:
+//   - 上方向の薄い影 + 上ボーダーで「下から立ち上がった板」感
+//   - 背景は soil-50 → neutral-100 のごく薄いグラデ
+//   - アクティブタブは内側の bevel 影 + emerald 系の薄背景
+// ベタなテクスチャや過剰な凹凸は付けない。
+
+const pathname = Astro.url.pathname;
+
+interface Tab {
+  href: string;
+  icon: string;
+  label: string;
+  ariaLabel: string;
+  // pathname がこの prefix にマッチしたらアクティブ。exact=true なら完全一致のみ。
+  match: string;
+  exact?: boolean;
+}
+
+const TABS: readonly Tab[] = [
+  {
+    href: "/",
+    icon: "🌱",
+    label: "マイ畑",
+    ariaLabel: "マイ畑（ホーム）",
+    match: "/",
+    exact: true,
+  },
+  {
+    href: "/grid",
+    icon: "🌾",
+    label: "畑編集",
+    ariaLabel: "畑の編集（グリッド）",
+    match: "/grid",
+  },
+  {
+    href: "/record",
+    icon: "📅",
+    label: "記録",
+    ariaLabel: "作業記録の投稿",
+    match: "/record",
+  },
+  {
+    href: "/community",
+    icon: "🌍",
+    label: "みんな",
+    ariaLabel: "みんなの畑（コミュニティ）",
+    match: "/community",
+  },
+  {
+    href: "/settings",
+    icon: "👤",
+    label: "設定",
+    ariaLabel: "アカウント設定",
+    match: "/settings",
+  },
+];
+
+// ルートページ ("/") は「マイ畑」と「畑編集」の 2 つの候補があるが、
+// "/" 完全一致は「マイ畑」が拾い、`/grid` は startsWith で「畑編集」が拾うので衝突しない。
+function isActive(tab: Tab): boolean {
+  if (tab.exact) return pathname === tab.match;
+  return pathname === tab.match || pathname.startsWith(`${tab.match}/`);
+}
+
+// Issue 仕様は 4 タブだが、既存の `/` と `/grid` を両方残したいので 5 タブで実装している。
+// （/ がポータル, /grid がグリッド編集。Phase 1 の段階では分離しておくほうが破壊が少ない。）
+// CLAUDE.md の「業務アプリの使いやすさ優先」に従い、ラベルは全て日本語短縮。
+---
+
+<nav
+  data-testid="fip-bottom-nav"
+  aria-label="メインナビゲーション"
+  class="fixed bottom-0 inset-x-0 z-40 border-t border-neutral-300 bg-gradient-to-b from-soil-50 to-neutral-100 shadow-[0_-1px_3px_rgba(0,0,0,0.06)] safe-area-bottom"
+>
+  <ul class="mx-auto flex h-16 max-w-3xl items-stretch">
+    {
+      TABS.map((tab) => {
+        const active = isActive(tab);
+        return (
+          <li class="flex-1">
+            <a
+              href={tab.href}
+              data-testid={`fip-bottom-nav-${tab.match === "/" ? "home" : tab.match.slice(1)}`}
+              data-active={active ? "true" : "false"}
+              aria-label={tab.ariaLabel}
+              aria-current={active ? "page" : undefined}
+              class:list={[
+                "flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium leading-tight transition-colors",
+                active
+                  ? "border-t-2 border-emerald-600 bg-emerald-50/70 text-emerald-700 shadow-bevel-sm"
+                  : "border-t-2 border-transparent text-neutral-500 hover:text-neutral-700",
+              ]}
+            >
+              <span class="text-xl leading-none" aria-hidden="true">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </a>
+          </li>
+        );
+      })
+    }
+  </ul>
+</nav>

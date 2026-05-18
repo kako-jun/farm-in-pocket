@@ -2,32 +2,23 @@
 import { FARM_IN_POCKET_VERSION } from "@farm-in-pocket/shared";
 import AccountSetup from "../components/AccountSetup";
 import PrivacyNotice from "../components/PrivacyNotice";
-import "../styles/global.css";
+import MainLayout from "../layouts/MainLayout.astro";
 
 // SSG (静的書き出し)。動的ルートの追加で astro.config が server モードになったため明示。
 export const prerender = true;
 ---
 
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Farm in Pocket (ポケ農) — 準備中</title>
-    <meta name="description" content="ポケットの中の農業。牧場物語のリアル MMO な家庭菜園 SNS。" />
-  </head>
-  <body>
-    <main class="min-h-screen flex flex-col items-center justify-center gap-4 bg-neutral-50 text-neutral-900 p-8">
-      <h1 class="text-3xl font-bold">🌱 Farm in Pocket (ポケ農)</h1>
-      <p class="text-lg">準備中です。設計・実装中（Phase 0）。</p>
-      <p class="text-sm text-neutral-500">v{FARM_IN_POCKET_VERSION}</p>
-      <nav class="flex gap-4 text-sm">
-        <a class="text-emerald-700 hover:underline" href="/grid">マイ畑</a>
-        <a class="text-emerald-700 hover:underline" href="/record">記録</a>
-        <a class="text-emerald-700 hover:underline" href="/community">みんな</a>
-        <a class="text-emerald-700 hover:underline" href="/settings">設定</a>
-      </nav>
-    </main>
-    <PrivacyNotice client:load />
-    <AccountSetup client:load />
-  </body>
-</html>
+<MainLayout
+  title="Farm in Pocket (ポケ農) — 準備中"
+  description="ポケットの中の農業。牧場物語のリアル MMO な家庭菜園 SNS。"
+>
+  <main
+    class="min-h-screen flex flex-col items-center justify-center gap-4 text-neutral-900 p-8 pb-24"
+  >
+    <h1 class="text-3xl font-bold">🌱 Farm in Pocket (ポケ農)</h1>
+    <p class="text-lg">準備中です。設計・実装中（Phase 0）。</p>
+    <p class="text-sm text-neutral-500">v{FARM_IN_POCKET_VERSION}</p>
+  </main>
+  <PrivacyNotice client:load />
+  <AccountSetup client:load />
+</MainLayout>

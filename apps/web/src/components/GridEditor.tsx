@@ -717,9 +717,11 @@ export default function GridEditor(): JSX.Element {
         </div>
       </header>
 
+      {/* Issue #20: グリッド全体にごく薄い bevel + 内側パディング。
+       *   セルの斜線テクスチャ等は既存のまま (テスト破壊回避)。 */}
       <div
         data-testid="fip-grid-cells"
-        className="grid gap-2"
+        className="grid gap-2 rounded-lg bg-soil-50/60 p-2 shadow-bevel"
         style={{ gridTemplateColumns: `repeat(${grid.sizeX}, minmax(48px, 1fr))` }}
       >
         {Array.from({ length: grid.sizeY }, (_, y) =>
