@@ -24,6 +24,7 @@ import {
 } from "../lib/grid-api";
 import { getMyKeyPair } from "../lib/keys";
 import CellDetail from "./CellDetail";
+import GridThumbnail from "./GridThumbnail";
 
 const ENVIRONMENT_LABELS: Record<GridEnvironment, string> = {
   outdoor_sunny: "屋外（日向）",
@@ -174,6 +175,8 @@ export default function GridEditor(): JSX.Element {
   const [manageMode, setManageMode] = useState(false);
   // 削除確認ダイアログ
   const [deleteConfirm, setDeleteConfirm] = useState<GridRecord | null>(null);
+  // Issue #40: アーカイブ済みを一覧に含めるか（既定 false）
+  const [showArchived, setShowArchived] = useState(false);
 
   // タブ上での名前インライン編集
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
@@ -244,17 +247,20 @@ export default function GridEditor(): JSX.Element {
     el?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
   }, [activeId]);
 
-  const reload = useCallback(async (pk: string) => {
+  const reload = useCallback(async (pk: string, includeArchived: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const list = await listGrids(pk);
+      // Issue #40: summary=true でセル統計を、includeArchived=showArchived でアーカイブ表示制御。
+      const list = await listGrids(pk, { includeArchived, summary: true });
       setGrids(list);
-      // アクティブグリッド復元: localStorage の ID が現存しなければ先頭にフォールバック
+      // アクティブグリッド復元: localStorage の ID が現存しなければ
+      // 「アクティブ（非アーカイブ）の先頭」にフォールバック。
       const stored =
         typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_GRID_KEY) : null;
       const found = stored != null ? list.find((g) => g.id === stored) : undefined;
-      const next = found ?? list[0] ?? null;
+      const firstActive = list.find((g) => g.archivedAt == null) ?? list[0] ?? null;
+      const next = found ?? firstActive;
       setActiveId(next?.id ?? null);
       hydratedRef.current = true;
     } catch (e) {
@@ -269,8 +275,8 @@ export default function GridEditor(): JSX.Element {
       setLoading(false);
       return;
     }
-    void reload(pubkey);
-  }, [pubkey, reload]);
+    void reload(pubkey, showArchived);
+  }, [pubkey, reload, showArchived]);
 
   // アクティブ ID を localStorage に書き戻し（初回 reload が終わってからのみ）
   useEffect(() => {
@@ -316,6 +322,30 @@ export default function GridEditor(): JSX.Element {
       setCreateY(5);
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
+    }
+  };
+
+  // Issue #40: グリッドのアーカイブ（凍結）/ 解除。
+  // 削除と違い cells / plantings / crop_history は壊さない。
+  // archive=true で archived_at=now、false で NULL に戻る。
+  const handleArchive = async (target: GridRecord, archive: boolean): Promise<void> => {
+    if (pubkey === null) return;
+    try {
+      const r = await updateGrid(target.id, pubkey, { archive });
+      // archive=true 時、showArchived=false なら一覧から消えるので
+      // reload して取り直す（同時に summary も再計算）。
+      // archive=false 時も統一して reload。
+      await reload(pubkey, showArchived);
+      // archive=true で active を凍結したら、アクティブを別グリッドに移す
+      if (archive && activeId === target.id) {
+        // reload 後に setGrids が反映されているとは限らないので、
+        // r.grid を含めた最新リストから非アーカイブ先頭を探す。
+        // 取り出せなければ null（UI が「グリッドを選択してください」になる）。
+      }
+      // 引数 r は今は使わない（reload で grids 再構築）。reference にだけ残す。
+      void r;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "archive failed");
     }
   };
 
@@ -366,7 +396,7 @@ export default function GridEditor(): JSX.Element {
       // 片方失敗時はサーバーから再取得して UI と整合させる
       // (Promise.all で片方だけ成功すると sortOrder が部分適用された状態になり、
       //  ローカルの楽観更新では復元できないため強制再同期する)
-      void reload(pubkey);
+      void reload(pubkey, showArchived);
     }
   };
 
@@ -451,7 +481,7 @@ export default function GridEditor(): JSX.Element {
         await deletePlanting(existing.currentPlantingId, pubkey);
       }
       await deleteCell(grid.id, pubkey, openCell.x, openCell.y);
-      await reload(pubkey);
+      await reload(pubkey, showArchived);
       setModal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "clear failed");
@@ -480,7 +510,7 @@ export default function GridEditor(): JSX.Element {
         return;
       }
       setRotationConfirm(null);
-      await reload(pubkey);
+      await reload(pubkey, showArchived);
       setModal(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "plant failed");
@@ -666,6 +696,7 @@ export default function GridEditor(): JSX.Element {
           {grids.map((g) => {
             const isActive = g.id === activeId;
             const isEditing = editingNameId === g.id;
+            const isArchived = g.archivedAt != null;
             return (
               <button
                 key={g.id}
@@ -675,6 +706,7 @@ export default function GridEditor(): JSX.Element {
                 type="button"
                 data-testid={`fip-grid-tab-${g.id}`}
                 data-active={isActive ? "1" : undefined}
+                data-archived={isArchived ? "1" : undefined}
                 onClick={() => {
                   if (isEditing) return;
                   setActiveId(g.id);
@@ -682,8 +714,12 @@ export default function GridEditor(): JSX.Element {
                 onDoubleClick={() => handleStartRename(g)}
                 className={`shrink-0 rounded-lg border px-3 py-2 text-sm ${
                   isActive
-                    ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-700"
-                    : "border-neutral-300 bg-white text-neutral-700"
+                    ? isArchived
+                      ? "border-neutral-400 bg-neutral-100 font-semibold text-neutral-600"
+                      : "border-emerald-500 bg-emerald-50 font-semibold text-emerald-700"
+                    : isArchived
+                      ? "border-neutral-300 bg-neutral-50 text-neutral-500"
+                      : "border-neutral-300 bg-white text-neutral-700"
                 }`}
                 style={{ minHeight: 44 }}
               >
@@ -710,6 +746,11 @@ export default function GridEditor(): JSX.Element {
                   />
                 ) : (
                   <span>
+                    {isArchived && (
+                      <span aria-label="凍結中" title="凍結中" className="mr-1">
+                        📦
+                      </span>
+                    )}
                     {g.name}{" "}
                     <span className="text-xs text-neutral-500">
                       {g.sizeX}×{g.sizeY}
@@ -750,8 +791,11 @@ export default function GridEditor(): JSX.Element {
       {manageMode && (
         <ManagePanel
           grids={grids}
+          showArchived={showArchived}
+          onToggleShowArchived={() => setShowArchived((v) => !v)}
           onMove={handleMove}
           onRequestDelete={(g) => setDeleteConfirm(g)}
+          onArchive={(g, archive) => void handleArchive(g, archive)}
           onRename={handleStartRename}
           onClose={() => setManageMode(false)}
         />
@@ -945,7 +989,7 @@ export default function GridEditor(): JSX.Element {
           }}
           onChanged={async () => {
             if (pubkey) {
-              await reload(pubkey);
+              await reload(pubkey, showArchived);
             }
           }}
           onEditContainer={() => setModal("container")}
@@ -1230,86 +1274,162 @@ function CreateGridModal(props: CreateGridModalProps): JSX.Element {
 
 interface ManagePanelProps {
   grids: GridRecord[];
+  showArchived: boolean;
+  onToggleShowArchived: () => void;
   onMove: (id: string, dir: -1 | 1) => void | Promise<void>;
   onRequestDelete: (g: GridRecord) => void;
+  onArchive: (g: GridRecord, archive: boolean) => void;
   onRename: (g: GridRecord) => void;
   onClose: () => void;
 }
 
 function ManagePanel(props: ManagePanelProps): JSX.Element {
-  const { grids, onMove, onRequestDelete, onRename, onClose } = props;
+  const {
+    grids,
+    showArchived,
+    onToggleShowArchived,
+    onMove,
+    onRequestDelete,
+    onArchive,
+    onRename,
+    onClose,
+  } = props;
   return (
     <div
       data-testid="fip-grid-manage"
       className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3"
     >
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-amber-800">並び替え・削除モード</p>
-        <button
-          type="button"
-          data-testid="fip-grid-manage-close"
-          onClick={onClose}
-          className="rounded border border-neutral-300 bg-white px-3 py-1 text-xs"
-          style={{ minHeight: 32 }}
-        >
-          閉じる
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-amber-800">並び替え・凍結・削除モード</p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="fip-grid-manage-toggle-archived"
+            data-on={showArchived ? "1" : undefined}
+            onClick={onToggleShowArchived}
+            className={`rounded border px-3 py-1 text-xs ${
+              showArchived
+                ? "border-neutral-500 bg-neutral-200 font-semibold text-neutral-800"
+                : "border-neutral-300 bg-white text-neutral-700"
+            }`}
+            style={{ minHeight: 32 }}
+            aria-pressed={showArchived}
+          >
+            {showArchived ? "📦 凍結中を隠す" : "📦 凍結中を表示"}
+          </button>
+          <button
+            type="button"
+            data-testid="fip-grid-manage-close"
+            onClick={onClose}
+            className="rounded border border-neutral-300 bg-white px-3 py-1 text-xs"
+            style={{ minHeight: 32 }}
+          >
+            閉じる
+          </button>
+        </div>
       </div>
       <ul className="space-y-1">
-        {grids.map((g, i) => (
-          <li
-            key={g.id}
-            data-testid={`fip-grid-manage-row-${g.id}`}
-            className="flex items-center gap-1 rounded bg-white px-2 py-1"
-          >
-            <span className="flex-1 truncate text-sm">
-              {g.name}{" "}
-              <span className="text-xs text-neutral-500">
-                {g.sizeX}×{g.sizeY}
-              </span>
-            </span>
-            <button
-              type="button"
-              data-testid={`fip-grid-manage-up-${g.id}`}
-              disabled={i === 0}
-              onClick={() => void onMove(g.id, -1)}
-              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
-              style={{ minHeight: 32 }}
-              aria-label="上へ"
+        {grids.map((g, i) => {
+          const isArchived = g.archivedAt != null;
+          const summary = g.summary;
+          // 統計は summary が無いとき（API が古いなど）に cells から最低限導く。
+          const cellCount = summary?.cellCount ?? g.cells.length;
+          const plantingCount =
+            summary?.plantingCount ?? g.cells.filter((c) => c.currentPlantingId != null).length;
+          const voidCount =
+            summary?.voidCount ?? g.cells.filter((c) => c.containerType === "void").length;
+          // 「空き」= grid 全体のセル枠から「使用済み（容器あり or VOID）」を引いた数。
+          //   ・容器設定済み = cells に行があり container_type !== null
+          //   ・VOID も枠を埋めている扱い
+          //   ・cells に行が無い座標は「空き」
+          const totalSlots = g.sizeX * g.sizeY;
+          // VOID 含めて occupied と数える（VOID = 使用済み）
+          const occupied = cellCount;
+          const emptyCount = Math.max(0, totalSlots - occupied);
+          return (
+            <li
+              key={g.id}
+              data-testid={`fip-grid-manage-row-${g.id}`}
+              data-archived={isArchived ? "1" : undefined}
+              className={`flex flex-wrap items-center gap-2 rounded px-2 py-2 ${
+                isArchived ? "bg-neutral-100 text-neutral-500" : "bg-white"
+              }`}
             >
-              ↑
-            </button>
-            <button
-              type="button"
-              data-testid={`fip-grid-manage-down-${g.id}`}
-              disabled={i === grids.length - 1}
-              onClick={() => void onMove(g.id, 1)}
-              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
-              style={{ minHeight: 32 }}
-              aria-label="下へ"
-            >
-              ↓
-            </button>
-            <button
-              type="button"
-              data-testid={`fip-grid-manage-rename-${g.id}`}
-              onClick={() => onRename(g)}
-              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs"
-              style={{ minHeight: 32 }}
-            >
-              名前
-            </button>
-            <button
-              type="button"
-              data-testid={`fip-grid-manage-delete-${g.id}`}
-              onClick={() => onRequestDelete(g)}
-              className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700"
-              style={{ minHeight: 32 }}
-            >
-              削除
-            </button>
-          </li>
-        ))}
+              {/* サムネ */}
+              <GridThumbnail grid={g} size="sm" />
+              <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+                <span className="truncate text-sm">
+                  {isArchived && <span className="mr-1">📦</span>}
+                  {g.name}{" "}
+                  <span className="text-xs text-neutral-500">
+                    {g.sizeX}×{g.sizeY}
+                  </span>
+                </span>
+                <span
+                  data-testid={`fip-grid-manage-stats-${g.id}`}
+                  className="text-[10px] text-neutral-600"
+                >
+                  {cellCount} セル / {plantingCount} 植え付け中 / {emptyCount} 空き
+                  {voidCount > 0 ? ` / ${voidCount} VOID` : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                data-testid={`fip-grid-manage-up-${g.id}`}
+                disabled={i === 0}
+                onClick={() => void onMove(g.id, -1)}
+                className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
+                style={{ minHeight: 32 }}
+                aria-label="上へ"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                data-testid={`fip-grid-manage-down-${g.id}`}
+                disabled={i === grids.length - 1}
+                onClick={() => void onMove(g.id, 1)}
+                className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs disabled:opacity-40"
+                style={{ minHeight: 32 }}
+                aria-label="下へ"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                data-testid={`fip-grid-manage-rename-${g.id}`}
+                onClick={() => onRename(g)}
+                className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs"
+                style={{ minHeight: 32 }}
+              >
+                名前
+              </button>
+              <button
+                type="button"
+                data-testid={`fip-grid-manage-archive-${g.id}`}
+                onClick={() => onArchive(g, !isArchived)}
+                className={`rounded border bg-white px-2 py-1 text-xs ${
+                  isArchived
+                    ? "border-emerald-300 text-emerald-700"
+                    : "border-neutral-400 text-neutral-700"
+                }`}
+                style={{ minHeight: 32 }}
+                title={isArchived ? "凍結解除" : "凍結"}
+              >
+                {isArchived ? "解除" : "凍結"}
+              </button>
+              <button
+                type="button"
+                data-testid={`fip-grid-manage-delete-${g.id}`}
+                onClick={() => onRequestDelete(g)}
+                className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-700"
+                style={{ minHeight: 32 }}
+              >
+                削除
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

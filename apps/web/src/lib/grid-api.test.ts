@@ -951,4 +951,91 @@ describe("grid-api", () => {
     expect(res.score).toBe(3);
     expect(res.alreadyVoted).toBe(false);
   });
+
+  // ---------------------------------------------------------------------------
+  // Issue #40: グリッドアーカイブ / 統計取得
+  // ---------------------------------------------------------------------------
+
+  it("Issue #40: updateGrid で archive: true を渡すと PATCH に archive: true が乗る", async () => {
+    mockFetch({
+      grid: {
+        id: "g1",
+        userPubkey: "x".repeat(64),
+        name: "畑",
+        environment: "outdoor_sunny",
+        lighting: null,
+        sizeX: 3,
+        sizeY: 3,
+        sortOrder: 0,
+        archivedAt: "2026-05-18T00:00:00Z",
+        cells: [],
+      },
+      cropHistoryResetWarning: false,
+    });
+    const r = await updateGrid("g1", "pk", { archive: true });
+    expect(first().url).toBe("/api/grids/g1");
+    expect(first().init?.method).toBe("PATCH");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body.archive).toBe(true);
+    expect(body.pubkey).toBe("pk");
+    expect(r.grid.archivedAt).toBe("2026-05-18T00:00:00Z");
+  });
+
+  it("Issue #40: updateGrid で archive: false を渡すと PATCH に archive: false が乗る（凍結解除）", async () => {
+    mockFetch({
+      grid: {
+        id: "g1",
+        userPubkey: "x".repeat(64),
+        name: "畑",
+        environment: "outdoor_sunny",
+        lighting: null,
+        sizeX: 3,
+        sizeY: 3,
+        sortOrder: 0,
+        archivedAt: null,
+        cells: [],
+      },
+      cropHistoryResetWarning: false,
+    });
+    const r = await updateGrid("g1", "pk", { archive: false });
+    const body = JSON.parse(String(first().init?.body));
+    expect(body.archive).toBe(false);
+    expect(r.grid.archivedAt).toBeNull();
+  });
+
+  it("Issue #40: listGrids({ includeArchived, summary }) は URL クエリに反映され、summary を読み出せる", async () => {
+    mockFetch({
+      grids: [
+        {
+          id: "g1",
+          userPubkey: "x".repeat(64),
+          name: "畑",
+          environment: "outdoor_sunny",
+          lighting: null,
+          sizeX: 3,
+          sizeY: 3,
+          sortOrder: 0,
+          archivedAt: null,
+          cells: [],
+          summary: {
+            cellCount: 5,
+            plantingCount: 2,
+            voidCount: 1,
+            cellsByContainer: { pot: 3, void: 1, planter: 1 },
+          },
+        },
+      ],
+    });
+    const list = await listGrids("pk", { includeArchived: true, summary: true });
+    const u = first().url;
+    expect(u.startsWith("/api/grids?")).toBe(true);
+    expect(u).toContain("pubkey=pk");
+    expect(u).toContain("includeArchived=true");
+    expect(u).toContain("summary=true");
+    expect(list).toHaveLength(1);
+    expect(list[0]?.summary?.cellCount).toBe(5);
+    expect(list[0]?.summary?.plantingCount).toBe(2);
+    expect(list[0]?.summary?.voidCount).toBe(1);
+    expect(list[0]?.summary?.cellsByContainer.pot).toBe(3);
+  });
 });

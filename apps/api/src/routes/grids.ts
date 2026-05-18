@@ -4,6 +4,7 @@ import type {
   GridEnvironment,
   GridLighting,
   GridRecord,
+  GridSummary,
   SoilType,
 } from "@farm-in-pocket/shared";
 import { isValidPubkeyHex } from "@farm-in-pocket/shared";
@@ -60,6 +61,7 @@ interface GridRow {
   size_x: number;
   size_y: number;
   sort_order: number;
+  archived_at: string | null;
 }
 
 interface CellRow {
@@ -76,7 +78,7 @@ interface CellRow {
   last_pesticide_at: string | null;
 }
 
-function toGridRecord(row: GridRow, cells: CellRecord[]): GridRecord {
+function toGridRecord(row: GridRow, cells: CellRecord[], summary?: GridSummary): GridRecord {
   return {
     id: row.id,
     userPubkey: row.user_pubkey,
@@ -86,7 +88,9 @@ function toGridRecord(row: GridRow, cells: CellRecord[]): GridRecord {
     sizeX: row.size_x,
     sizeY: row.size_y,
     sortOrder: row.sort_order,
+    archivedAt: row.archived_at,
     cells,
+    ...(summary ? { summary } : {}),
   };
 }
 
@@ -143,6 +147,70 @@ async function fetchCellsForGrid(db: D1Database, gridId: string): Promise<CellRe
   return (result.results ?? []).map(toCellRecord);
 }
 
+// Issue #40: 各 grid のセル統計を 1 クエリで取得する（summary=true 用）。
+// grid_id ごとに COUNT(*), planting 数, void 数を集計する。container 別件数は別クエリで取る。
+async function fetchSummariesForUser(
+  db: D1Database,
+  pubkey: string,
+): Promise<Map<string, GridSummary>> {
+  const summaryRes = await db
+    .prepare(
+      `SELECT c.grid_id AS grid_id,
+              COUNT(*) AS cell_count,
+              SUM(CASE WHEN c.current_planting_id IS NOT NULL THEN 1 ELSE 0 END) AS planting_count,
+              SUM(CASE WHEN c.container_type = 'void' THEN 1 ELSE 0 END) AS void_count
+         FROM cells c
+         JOIN grids g ON g.id = c.grid_id
+        WHERE g.user_pubkey = ?
+        GROUP BY c.grid_id`,
+    )
+    .bind(pubkey)
+    .all<{
+      grid_id: string;
+      cell_count: number;
+      planting_count: number;
+      void_count: number;
+    }>();
+  const containerRes = await db
+    .prepare(
+      `SELECT c.grid_id AS grid_id,
+              c.container_type AS container_type,
+              COUNT(*) AS n
+         FROM cells c
+         JOIN grids g ON g.id = c.grid_id
+        WHERE g.user_pubkey = ?
+          AND c.container_type IS NOT NULL
+        GROUP BY c.grid_id, c.container_type`,
+    )
+    .bind(pubkey)
+    .all<{
+      grid_id: string;
+      container_type: string;
+      n: number;
+    }>();
+
+  const byContainer = new Map<string, Record<string, number>>();
+  for (const r of containerRes.results ?? []) {
+    let m = byContainer.get(r.grid_id);
+    if (!m) {
+      m = {};
+      byContainer.set(r.grid_id, m);
+    }
+    m[r.container_type] = r.n;
+  }
+
+  const out = new Map<string, GridSummary>();
+  for (const r of summaryRes.results ?? []) {
+    out.set(r.grid_id, {
+      cellCount: r.cell_count ?? 0,
+      plantingCount: r.planting_count ?? 0,
+      voidCount: r.void_count ?? 0,
+      cellsByContainer: byContainer.get(r.grid_id) ?? {},
+    });
+  }
+  return out;
+}
+
 async function upsertProfile(db: D1Database, pubkey: string): Promise<void> {
   await db
     .prepare(
@@ -155,25 +223,32 @@ async function upsertProfile(db: D1Database, pubkey: string): Promise<void> {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// GET /api/grids?pubkey=<hex64>
+// GET /api/grids?pubkey=<hex64>&includeArchived=true|false&summary=true|false
 app.get("/", async (c) => {
   const pubkey = c.req.query("pubkey")?.toLowerCase();
   if (!pubkey || !isValidPubkeyHex(pubkey)) {
     return c.json({ error: "invalid pubkey" }, 400);
   }
+  // Issue #40: 既定はアーカイブ非表示。?includeArchived=true で混ぜる。
+  const includeArchived = c.req.query("includeArchived") === "true";
+  // Issue #40: ?summary=true で各 grid に統計を詰めて返す。
+  const withSummary = c.req.query("summary") === "true";
+
+  const whereArchived = includeArchived ? "" : "AND archived_at IS NULL";
   const gridsRes = await c.env.DB.prepare(
-    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order
-       FROM grids WHERE user_pubkey = ? ORDER BY sort_order, created_at`,
+    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order, archived_at
+       FROM grids WHERE user_pubkey = ? ${whereArchived} ORDER BY sort_order, created_at`,
   )
     .bind(pubkey)
     .all<GridRow>();
   const grids = gridsRes.results ?? [];
+  const summaries = withSummary ? await fetchSummariesForUser(c.env.DB, pubkey) : null;
   const out: GridRecord[] = [];
   // TODO(Phase 2): N+1 解消。grids 取得後に IN(...) で全 cells を一括取得し JS 側で group_by する。
   // 現状は 1 ユーザー 1〜数 grid 想定なので問題なし。
   for (const g of grids) {
     const cells = await fetchCellsForGrid(c.env.DB, g.id);
-    out.push(toGridRecord(g, cells));
+    out.push(toGridRecord(g, cells, summaries?.get(g.id)));
   }
   return c.json({ grids: out });
 });
@@ -235,6 +310,7 @@ app.post("/", async (c) => {
     sizeX,
     sizeY,
     sortOrder: 0,
+    archivedAt: null,
     cells,
   };
   return c.json({ grid }, 201);
@@ -251,13 +327,14 @@ app.patch("/:id", async (c) => {
     sizeX?: unknown;
     sizeY?: unknown;
     sortOrder?: unknown;
+    archive?: unknown;
   }>();
 
   const auth = await requireGridOwner(c.env.DB, id, body.pubkey);
   if (!auth.ok) return c.json({ error: auth.error }, auth.status);
 
   const existing = await c.env.DB.prepare(
-    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order
+    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order, archived_at
        FROM grids WHERE id = ?`,
   )
     .bind(id)
@@ -310,6 +387,18 @@ app.patch("/:id", async (c) => {
     sets.push("sort_order = ?");
     binds.push(v);
   }
+  // Issue #40: archive: true で archived_at=now、false で archived_at=NULL に切り替える。
+  // 物理削除とは独立した「凍結」操作。
+  if (body.archive !== undefined) {
+    if (typeof body.archive !== "boolean") {
+      return c.json({ error: "invalid archive" }, 400);
+    }
+    if (body.archive) {
+      sets.push("archived_at = datetime('now')");
+    } else {
+      sets.push("archived_at = NULL");
+    }
+  }
 
   if (sets.length === 0) {
     return c.json({ error: "no fields to update" }, 400);
@@ -321,7 +410,7 @@ app.patch("/:id", async (c) => {
     .run();
 
   const reloaded = await c.env.DB.prepare(
-    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order
+    `SELECT id, user_pubkey, name, environment, lighting, size_x, size_y, sort_order, archived_at
        FROM grids WHERE id = ?`,
   )
     .bind(id)

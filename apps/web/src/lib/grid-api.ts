@@ -68,10 +68,21 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
 
 // ---- grids ----------------------------------------------------------------
 
-export async function listGrids(pubkey: string): Promise<GridRecord[]> {
-  const data = await jsonFetch<{ grids: GridRecord[] }>(
-    url(`/api/grids?pubkey=${encodeURIComponent(pubkey)}`),
-  );
+export interface ListGridsOptions {
+  /** Issue #40: アーカイブ済みグリッドを含めて返すか（既定 false）。 */
+  includeArchived?: boolean;
+  /** Issue #40: 各 grid に summary（セル統計）を詰めて返すか（既定 false）。 */
+  summary?: boolean;
+}
+
+export async function listGrids(
+  pubkey: string,
+  options: ListGridsOptions = {},
+): Promise<GridRecord[]> {
+  const sp = new URLSearchParams({ pubkey });
+  if (options.includeArchived) sp.set("includeArchived", "true");
+  if (options.summary) sp.set("summary", "true");
+  const data = await jsonFetch<{ grids: GridRecord[] }>(url(`/api/grids?${sp.toString()}`));
   return data.grids;
 }
 
@@ -99,6 +110,8 @@ export interface UpdateGridInput {
   sizeX?: number;
   sizeY?: number;
   sortOrder?: number;
+  /** Issue #40: true で凍結、false で復元。 */
+  archive?: boolean;
 }
 
 export interface UpdateGridResult {
