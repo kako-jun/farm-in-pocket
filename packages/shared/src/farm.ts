@@ -71,6 +71,29 @@ export interface WorkRecordDraft {
 export const WORK_RECORD_MAX_CONTENT_LENGTH = 280;
 
 // =============================================================================
+// 養分タイプの表示色 / Issue #25
+// =============================================================================
+//
+// 養分投入タイムライン (NutrientTimelineChart) の点・線の色。
+// nutrient_type ごとに段（縦軸位置）を変えるが、色の正本もここに固定する。
+// 同じ色マップを将来 CellDetail の履歴アイコン色などで再利用できるよう shared に置く。
+
+export const NUTRIENT_COLORS: Record<string, string> = {
+  nitrogen: "#16a34a", // 緑（葉物の窒素感）
+  phosphorus: "#dc2626", // 赤
+  potassium: "#a855f7", // 紫
+  calcium: "#fbbf24", // 黄
+  magnesium: "#0ea5e9", // 水色
+  sulfur: "#f97316", // 橙
+  iron: "#71717a", // グレー
+  manganese: "#84cc16", // ライム
+  zinc: "#06b6d4", // シアン
+  boron: "#a3a3a3", // 薄グレー
+  organic: "#8b6f47", // soil
+  other: "#525252", // dark neutral
+};
+
+// =============================================================================
 // 連作障害（rotation） / Issue #23
 // =============================================================================
 //

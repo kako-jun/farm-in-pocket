@@ -465,6 +465,119 @@ describe("CellDetail", () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Issue #25: 養分タイムライン セクション
+  // -------------------------------------------------------------------------
+
+  it("養分タイムライン取得結果から N/P/K 最終投入日とチャートが表示される", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/ph(\?|$)/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/nutrients(\?|$)/.test(u),
+      response: {
+        records: [
+          {
+            id: 1,
+            cellId: 11,
+            appliedAt: "2026-04-01",
+            nutrientType: "nitrogen",
+            materialId: null,
+            amount: 30,
+            amountUnit: "g",
+            note: null,
+          },
+          {
+            id: 2,
+            cellId: 11,
+            appliedAt: "2026-04-20",
+            nutrientType: "phosphorus",
+            materialId: null,
+            amount: 15,
+            amountUnit: "g",
+            note: null,
+          },
+          {
+            id: 3,
+            cellId: 11,
+            appliedAt: "2026-05-10",
+            nutrientType: "nitrogen",
+            materialId: null,
+            amount: 20,
+            amountUnit: "g",
+            note: null,
+          },
+        ],
+      },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-nutrient-summary")).toBeInTheDocument();
+    });
+    // N (nitrogen) の最終投入日は 2026-05-10
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-nitrogen").textContent).toContain(
+      "2026-05-10",
+    );
+    // P (phosphorus) の最終投入日は 2026-04-20
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-phosphorus").textContent).toContain(
+      "2026-04-20",
+    );
+    // K (potassium) は投入がないので「未投入」
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-potassium").textContent).toContain(
+      "未投入",
+    );
+    // チャートが描画される
+    expect(screen.getByTestId("fip-nutrient-chart")).toBeInTheDocument();
+    // 投入点 3 個
+    expect(screen.getByTestId("fip-nutrient-chart-point-0")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-nutrient-chart-point-1")).toBeInTheDocument();
+    expect(screen.getByTestId("fip-nutrient-chart-point-2")).toBeInTheDocument();
+  });
+
+  it("養分タイムラインが 0 件なら N/P/K すべて「未投入」と表示しチャートは placeholder を出す", async () => {
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/records/.test(u),
+      response: { nutrients: [], pesticides: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/history/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/ph(\?|$)/.test(u),
+      response: { records: [] },
+    });
+    routes.push({
+      match: (u) => /\/cells\/1\/2\/nutrients(\?|$)/.test(u),
+      response: { records: [] },
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("fip-cell-detail-nutrient-summary")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-nitrogen").textContent).toContain(
+      "未投入",
+    );
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-phosphorus").textContent).toContain(
+      "未投入",
+    );
+    expect(screen.getByTestId("fip-cell-detail-nutrient-summary-potassium").textContent).toContain(
+      "未投入",
+    );
+    // 0 件 placeholder
+    expect(screen.getByTestId("fip-nutrient-chart-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("fip-nutrient-chart")).toBeNull();
+  });
+
   it("過去履歴 fetch で年・季節・作物名・科 が一覧表示される", async () => {
     routes.push({
       match: (u) => /\/cells\/1\/2\/records/.test(u),

@@ -6,6 +6,7 @@ import {
   deleteGrid,
   deletePlanting,
   fetchCellHistory,
+  fetchCellNutrients,
   fetchCellPh,
   fetchCellRecords,
   listGrids,
@@ -344,6 +345,43 @@ describe("grid-api", () => {
     expect(records).toHaveLength(2);
     expect(records[0]?.value).toBe(5.5);
     expect(records[1]?.measuredAt).toBe("2026-05-17");
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #25: 養分投入の全件時系列取得
+  // -------------------------------------------------------------------------
+
+  it("fetchCellNutrients は GET /api/grids/:id/cells/:x/:y/nutrients?pubkey= を叩いて records 配列を返す", async () => {
+    mockFetch({
+      records: [
+        {
+          id: 1,
+          cellId: 11,
+          appliedAt: "2026-04-01",
+          nutrientType: "nitrogen",
+          materialId: null,
+          amount: 30,
+          amountUnit: "g",
+          note: null,
+        },
+        {
+          id: 2,
+          cellId: 11,
+          appliedAt: "2026-05-01",
+          nutrientType: "potassium",
+          materialId: null,
+          amount: 10,
+          amountUnit: "g",
+          note: null,
+        },
+      ],
+    });
+    const records = await fetchCellNutrients("g1", 2, 3, "pk");
+    expect(first().url).toBe("/api/grids/g1/cells/2/3/nutrients?pubkey=pk");
+    expect(first().init?.method ?? "GET").toBe("GET");
+    expect(records).toHaveLength(2);
+    expect(records[0]?.nutrientType).toBe("nitrogen");
+    expect(records[1]?.appliedAt).toBe("2026-05-01");
   });
 
   it("fetchCellHistory は records 配列をそのまま返す", async () => {

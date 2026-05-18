@@ -21,12 +21,14 @@ import type {
 import { type JSX, useCallback, useEffect, useState } from "react";
 import {
   fetchCellHistory,
+  fetchCellNutrients,
   fetchCellPh,
   fetchCellRecords,
   recordNutrient,
   recordPesticide,
   recordPh,
 } from "../lib/grid-api";
+import NutrientTimelineChart from "./charts/NutrientTimelineChart";
 import PhTimelineChart from "./charts/PhTimelineChart";
 
 const CONTAINER_LABELS: Record<ContainerType, string> = {
@@ -136,6 +138,9 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
   // Issue #24: pH 測定記録 (measured_at 昇順)
   const [phRecords, setPhRecords] = useState<PhRecord[]>([]);
   const [phLoading, setPhLoading] = useState(true);
+  // Issue #25: 養分タイムライン (applied_at 昇順 / 全件)
+  const [allNutrients, setAllNutrients] = useState<NutrientRecord[]>([]);
+  const [allNutrientsLoading, setAllNutrientsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickForm, setQuickForm] = useState<QuickFormKind>(null);
 
@@ -184,11 +189,27 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
     }
   }, [grid.id, pubkey, cellX, cellY]);
 
+  // Issue #25: 養分投入の全件を時系列昇順で取得 (タイムライン用)
+  const reloadAllNutrients = useCallback(async () => {
+    setAllNutrientsLoading(true);
+    try {
+      const records = await fetchCellNutrients(grid.id, cellX, cellY, pubkey);
+      setAllNutrients(records);
+    } catch (e) {
+      // 取得失敗は致命的でない
+      console.warn("fetchCellNutrients failed", e);
+      setAllNutrients([]);
+    } finally {
+      setAllNutrientsLoading(false);
+    }
+  }, [grid.id, pubkey, cellX, cellY]);
+
   useEffect(() => {
     void reloadRecords();
     void reloadCropHistory();
     void reloadPh();
-  }, [reloadRecords, reloadCropHistory, reloadPh]);
+    void reloadAllNutrients();
+  }, [reloadRecords, reloadCropHistory, reloadPh, reloadAllNutrients]);
 
   const handleNutrientSaved = async (input: {
     nutrientType: NutrientType;
@@ -199,6 +220,8 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
       await recordNutrient(grid.id, pubkey, cellX, cellY, input);
       setQuickForm(null);
       await reloadRecords();
+      // Issue #25: タイムラインも更新
+      await reloadAllNutrients();
       await onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
@@ -346,6 +369,16 @@ export default function CellDetail(props: CellDetailProps): JSX.Element {
               onCancel={() => setQuickForm(null)}
               onSubmit={handlePhSaved}
             />
+          )}
+        </section>
+
+        {/* 養分タイムライン (Issue #25) */}
+        <section className="space-y-2" data-testid="fip-cell-detail-nutrient-timeline-section">
+          <h4 className="text-sm font-semibold text-neutral-700">養分タイムライン</h4>
+          {allNutrientsLoading ? (
+            <p className="text-xs text-neutral-500">読み込み中…</p>
+          ) : (
+            <NutrientTimelineSection records={allNutrients} />
           )}
         </section>
 
@@ -620,6 +653,61 @@ function PhSection(props: {
           })}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 養分タイムライン セクション (Issue #25)
+//   * 主要養分 (N / P / K) の最終投入日を 3 行で表示
+//   * NutrientTimelineChart で全件を視覚化
+// ---------------------------------------------------------------------------
+
+const TIMELINE_SUMMARY_TYPES: { type: NutrientType; label: string }[] = [
+  { type: "nitrogen", label: "窒素 (N)" },
+  { type: "phosphorus", label: "リン酸 (P)" },
+  { type: "potassium", label: "カリ (K)" },
+];
+
+function NutrientTimelineSection(props: { records: NutrientRecord[] }): JSX.Element {
+  const { records } = props;
+
+  // type ごとの最終投入日。records は API 側で applied_at 昇順 (新しいほど末尾) の前提だが、
+  // 念のためここでも比較する。
+  const lastByType: Partial<Record<NutrientType, NutrientRecord>> = {};
+  for (const rec of records) {
+    const prev = lastByType[rec.nutrientType];
+    if (!prev || prev.appliedAt < rec.appliedAt) {
+      lastByType[rec.nutrientType] = rec;
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* N / P / K 最終投入日 サマリ */}
+      <ul
+        data-testid="fip-cell-detail-nutrient-summary"
+        className="space-y-1 rounded border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs"
+      >
+        {TIMELINE_SUMMARY_TYPES.map(({ type, label }) => {
+          const rec = lastByType[type];
+          return (
+            <li
+              key={`summary-${type}`}
+              data-testid={`fip-cell-detail-nutrient-summary-${type}`}
+              className="flex justify-between"
+            >
+              <span className="text-neutral-600">{label}</span>
+              <span className="font-medium text-emerald-800">
+                {rec ? `最終 ${rec.appliedAt.slice(0, 10)}` : "未投入"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* タイムラインチャート */}
+      <NutrientTimelineChart data={records} />
     </div>
   );
 }

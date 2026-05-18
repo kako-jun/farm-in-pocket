@@ -290,6 +290,22 @@ export async function fetchCellRecords(
   );
 }
 
+/**
+ * セルの養分投入記録を時系列昇順で全件取得する (Issue #25)。
+ * /records は最新 10 件専用 (Phase 1)。タイムライン表示にはこちらを使う。
+ */
+export async function fetchCellNutrients(
+  gridId: string,
+  x: number,
+  y: number,
+  pubkey: string,
+): Promise<NutrientRecord[]> {
+  const data = await jsonFetch<{ records: NutrientRecord[] }>(
+    url(`/api/grids/${gridId}/cells/${x}/${y}/nutrients?pubkey=${encodeURIComponent(pubkey)}`),
+  );
+  return data.records;
+}
+
 // ---- crop history (Issue #22) --------------------------------------------
 
 export interface CellHistoryResult {
