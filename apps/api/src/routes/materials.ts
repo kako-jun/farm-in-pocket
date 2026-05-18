@@ -5,10 +5,15 @@
 // 重複防止は (brand, name, category) の擬似ユニーク（INSERT 前に検索）。
 //
 // エンドポイント:
-//   GET  /api/materials?q=&category=&subcategory=&limit=50  検索
-//   GET  /api/materials/:id                                  単体取得
-//   POST /api/materials                                      新規登録
-//   POST /api/materials/:id/use                              利用カウント加算
+//   GET  /api/materials?q=&category=&subcategory=&sort=&limit=50  検索
+//   GET  /api/materials/:id                                       単体取得
+//   POST /api/materials                                           新規登録
+//   POST /api/materials/:id/use                                   利用カウント加算
+//
+// sort:
+//   - popular (default) … use_count DESC, user_count DESC, id DESC
+//   - recent           … created_at DESC, id DESC
+//   - name             … name ASC, id DESC
 //
 // use_count は呼び出すたびに +1（のべ）。
 // user_count は material_users に (material_id, pubkey) を INSERT OR IGNORE して
@@ -132,6 +137,7 @@ app.get("/", async (c) => {
   const categoryRaw = c.req.query("category")?.trim() ?? "";
   const subcategoryRaw = c.req.query("subcategory")?.trim() ?? "";
   const limitRaw = c.req.query("limit")?.trim() ?? "";
+  const sortRaw = c.req.query("sort")?.trim() ?? "";
 
   const where: string[] = [];
   const binds: unknown[] = [];
@@ -162,9 +168,22 @@ app.get("/", async (c) => {
     limit = parsed;
   }
 
+  let orderBy = "m.use_count DESC, m.user_count DESC, m.id DESC";
+  if (sortRaw.length > 0) {
+    if (sortRaw === "popular") {
+      orderBy = "m.use_count DESC, m.user_count DESC, m.id DESC";
+    } else if (sortRaw === "recent") {
+      orderBy = "m.created_at DESC, m.id DESC";
+    } else if (sortRaw === "name") {
+      orderBy = "m.name ASC, m.id DESC";
+    } else {
+      return c.json({ error: "invalid sort" }, 400);
+    }
+  }
+
   const sql = `${SELECT_BASE}${
     where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
-  } ORDER BY m.use_count DESC, m.id DESC LIMIT ?`;
+  } ORDER BY ${orderBy} LIMIT ?`;
 
   const result = await c.env.DB.prepare(sql)
     .bind(...binds, limit)

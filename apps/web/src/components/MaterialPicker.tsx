@@ -28,6 +28,8 @@ import {
 import type { JSX } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createMaterial, searchMaterials } from "../lib/grid-api";
+import AffiliateLinks from "./AffiliateLinks";
+import UsageBadge from "./UsageBadge";
 
 interface MaterialPickerProps {
   pubkey: string;
@@ -128,24 +130,26 @@ export default function MaterialPicker(props: MaterialPickerProps): JSX.Element 
         )}
         <ul className="divide-y divide-neutral-100">
           {results.map((m) => (
-            <li key={m.id}>
-              <button
-                type="button"
-                data-testid={`fip-material-pick-${m.id}`}
-                onClick={() => void props.onPick(m)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-emerald-50"
-                style={{ minHeight: 44 }}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{m.name}</span>
-                    {m.brand && <span className="ml-1 text-xs text-neutral-500">/ {m.brand}</span>}
-                  </div>
-                  <span className="text-[10px] text-neutral-400">
-                    {MATERIAL_CATEGORY_LABELS_JA[m.category]} · {m.useCount}回
+            <li key={m.id} className="px-3 py-2 hover:bg-emerald-50">
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  type="button"
+                  data-testid={`fip-material-pick-${m.id}`}
+                  onClick={() => void props.onPick(m)}
+                  className="flex-1 text-left text-sm"
+                  style={{ minHeight: 44 }}
+                >
+                  <span className="font-medium">{m.name}</span>
+                  {m.brand && <span className="ml-1 text-xs text-neutral-500">/ {m.brand}</span>}
+                  <span className="ml-2 text-[10px] text-neutral-400">
+                    {MATERIAL_CATEGORY_LABELS_JA[m.category]}
                   </span>
-                </div>
-              </button>
+                </button>
+                <AffiliateLinks links={m.affiliateLinks} align="row" compact />
+              </div>
+              <div className="mt-1">
+                <UsageBadge useCount={m.useCount} userCount={m.userCount} compact />
+              </div>
             </li>
           ))}
         </ul>
