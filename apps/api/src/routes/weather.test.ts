@@ -13,12 +13,23 @@ app.route("/api/weather", weatherRouter);
 
 let handle: MockD1Handle;
 
+// PR #89 retro B4: 「今日」の挙動が CI 実行日に依存しないよう fake timers で固定する。
+// weather ルータは `today === date` のときだけ cache を refresh するため、テストが
+// 走る暦上の日付に依存して挙動が変わるとフレーキーになる。
+const FIXED_NOW = new Date("2026-05-19T00:00:00Z");
+// 上の日付から計算した `today (YYYY-MM-DD)` 文字列。テスト内で日付を組み立てる際に使う。
+const TODAY_YMD = FIXED_NOW.toISOString().slice(0, 10);
+
 beforeEach(() => {
   handle = createMockD1();
+  vi.useFakeTimers({ now: FIXED_NOW });
 });
 
 afterEach(() => {
   handle.close();
+  // PR #89 retro B4: fake timers と stubGlobal('fetch') の両方を確実に元に戻す。
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -85,11 +96,13 @@ describe("weather router", () => {
   it("GET /api/weather はキャッシュミス時 Open-Meteo を叩いてキャッシュする", async () => {
     const { calls } = installFetchMock();
     const env = mockEnv(handle.db);
+    // PR #89 retro B4: 日付ハードコードを止めて FIXED_NOW 由来の today を使う。
+    // 「今日」を渡してもキャッシュが空なら geocoding + forecast の 2 回フェッチして保存されることを確認。
     const res = await request<{ record: { tempMax: number; tempMin: number } | null }>(
       app,
       "GET",
       "/api/weather",
-      { query: { region: "東京", date: "2026-05-01" } },
+      { query: { region: "東京", date: TODAY_YMD } },
       env,
     );
     expect(res.status).toBe(200);
@@ -136,7 +149,7 @@ describe("weather router", () => {
       app,
       "GET",
       "/api/weather",
-      { query: { region: "未知の地名", date: "2026-05-01" } },
+      { query: { region: "未知の地名", date: TODAY_YMD } },
       env,
     );
     expect(res.status).toBe(200);

@@ -199,6 +199,7 @@ plants.tags（JSON 配列）に「春まき / 春植え / 春先 / 夏野菜 / �
   - `state` を `planted` / `growing` に戻すと `end_tag` / `end_date` / `failure_memo` は NULL リセットされる。
   - **削除より終了を優先**: UI 上は「終了する」ボタンを推奨。終了状態で残せば連作判断材料が増える。
   - **DELETE は soft delete**（Issue #86）: `DELETE /api/plantings/:id` は物理削除しません。`state='ended'` + `end_date=today` + `end_tag='removed'`（既定）に切り替えるだけです。`?endTag=died` 等で上書きもできます。レスポンスは `{ ok: true, planting }` で更新後の `PlantingRecord` を返します。**履歴は残ります**（連作判定・振り返り用）。
+  - **再 DELETE は冪等で上書き仕様**（PR #88）: 既に `state='ended'` のものを再度 DELETE しても 200 で `end_tag` / `end_date` を新しい値で上書きします。`failure_memo` は touch しません（既存値を保持。失敗メモは PATCH で明示的に書き換える設計）。
 - **サイズ変更**: グリッドの size_x / size_y を変えると「過去の連作履歴との対応がリセットされます」確認ダイアログが出る（座標ベースで履歴管理しているため）。
 - **連作履歴の座標ベース管理**（Issue #22）。`crop_history` テーブルは `cell_id` ではなく **`grid_id + x + y`** で履歴を保持します。畝の区切りを変えても、同じ座標であれば養分・病気の偏りを追えます。
   - 履歴行の `plant_family` は **植えた時点の値を凍結**保存（denormalize）。`plants` マスタを後から削除/改名しても過去の科分類は壊れません。

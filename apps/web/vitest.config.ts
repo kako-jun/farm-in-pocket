@@ -14,7 +14,13 @@ import { getViteConfig } from "astro/config";
 // 切り替わり、`getViteConfig` の第一引数の UserConfig 型に `test` が含まれないと
 // TS が怒るようになった。vitest 側のフィールドは実行時には素通しされるため、第一引数を
 // any 経由で渡してフィールド名のチェックを緩める。
-// biome-ignore lint/suspicious/noExplicitAny: vitest フィールドを astro UserConfig に注入するためのキャスト
+//
+// PR #89 retro B5 で `vitest/config` 経由の `UserConfig` 型に置き換える試みを行ったが、
+// astro が依存する vite 6 と、ワークスペース hoist で解決される vite 7 で UserConfig 型が
+// 別物になり、`getViteConfig` の引数として渡すと型不一致になる（PluginOption の Plugin<any>
+// の `hotUpdate` シグネチャ違い）。vitest 4 系で vite 7 統一が進めば自然に解消する見込み
+// なので、それまでは any キャストを維持する。
+// biome-ignore lint/suspicious/noExplicitAny: vitest フィールドを astro UserConfig に注入するためのキャスト（vitest 4 系で掃除予定）
 const viteTestConfig: any = {
   test: {
     environment: "happy-dom",

@@ -132,6 +132,29 @@ describe("seed-products router", () => {
     expect(res.body.firstUse).toBe(true);
   });
 
+  // PR #89 retro B1: normalize 後に同一の pubkey（大文字/小文字違い）を 2 回叩いても user_count は 1 のまま。
+  // 「DISTINCT users by normalized pubkey」が壊れていないことを保証する。
+  it("POST /:id/use は normalize 後同一 pubkey なら user_count が 1 のまま", async () => {
+    const aLower = pubkeyHex("a");
+    const aUpper = aLower.toUpperCase();
+    const plantId = makePlant(handle.sqlite, {
+      name: "normalize use",
+      family: "シソ科",
+      category: "herb",
+    });
+    const id = makeSeedProduct(handle.sqlite, { name: "normalizeテスト", plantId });
+    const env = mockEnv(handle.db);
+    await request(app, "POST", `/api/seed-products/${id}/use`, { body: { pubkey: aLower } }, env);
+    const second = await request<{
+      product: { useCount: number; userCount: number };
+      firstUse: boolean;
+    }>(app, "POST", `/api/seed-products/${id}/use`, { body: { pubkey: aUpper } }, env);
+    expect(second.status).toBe(200);
+    expect(second.body.product.useCount).toBe(2);
+    expect(second.body.product.userCount).toBe(1);
+    expect(second.body.firstUse).toBe(false);
+  });
+
   it("POST /:id/use 同じ pubkey で 2 度叩くと use_count のみ +1", async () => {
     const a = pubkeyHex("a");
     const plantId = makePlant(handle.sqlite, {

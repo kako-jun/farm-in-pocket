@@ -148,6 +148,86 @@ describe("cell-actions router", () => {
     expect(res.body.pesticides).toEqual([]);
   });
 
+  // PR #89 retro B1: mutation / read 系の 403 経路を網羅。
+  // 他人 pubkey で叩いて requireGridOwner が 403 を返すことを各ハンドラで確認する。
+  it("POST .../nutrient は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const gridId = makeGrid(handle.sqlite, a);
+    makeCell(handle.sqlite, gridId, 0, 0, { containerType: "planter" });
+    const env = mockEnv(handle.db);
+    const res = await request(
+      app,
+      "POST",
+      `/api/grids/${gridId}/cells/0/0/nutrient`,
+      { body: { pubkey: b, nutrientType: "nitrogen", appliedAt: "2026-04-01" } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("POST .../pesticide は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const gridId = makeGrid(handle.sqlite, a);
+    makeCell(handle.sqlite, gridId, 0, 0, { containerType: "planter" });
+    const env = mockEnv(handle.db);
+    const res = await request(
+      app,
+      "POST",
+      `/api/grids/${gridId}/cells/0/0/pesticide`,
+      { body: { pubkey: b, pesticideType: "insecticide" } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("POST .../ph は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const gridId = makeGrid(handle.sqlite, a);
+    makeCell(handle.sqlite, gridId, 0, 0, { containerType: "planter" });
+    const env = mockEnv(handle.db);
+    const res = await request(
+      app,
+      "POST",
+      `/api/grids/${gridId}/cells/0/0/ph`,
+      { body: { pubkey: b, value: 6.5 } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("GET .../records は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const gridId = makeGrid(handle.sqlite, a);
+    const env = mockEnv(handle.db);
+    const res = await request(
+      app,
+      "GET",
+      `/api/grids/${gridId}/cells/0/0/records`,
+      { query: { pubkey: b } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("GET .../history は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const gridId = makeGrid(handle.sqlite, a);
+    const env = mockEnv(handle.db);
+    const res = await request(
+      app,
+      "GET",
+      `/api/grids/${gridId}/cells/0/0/history`,
+      { query: { pubkey: b } },
+      env,
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("GET .../records は直近 10 件を applied_at DESC で返す", async () => {
     const a = pubkeyHex("a");
     const gridId = makeGrid(handle.sqlite, a);

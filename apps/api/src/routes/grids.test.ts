@@ -116,6 +116,21 @@ describe("grids router", () => {
     expect(res.body.grid.archivedAt).toBeTruthy();
   });
 
+  // PR #89 retro B1: DELETE 他人 grid → 403。
+  it("DELETE /api/grids/:id は他人 pubkey なら 403", async () => {
+    const a = pubkeyHex("a");
+    const b = pubkeyHex("b");
+    const id = makeGrid(handle.sqlite, a);
+    const env = mockEnv(handle.db);
+    const res = await request(app, "DELETE", `/api/grids/${id}`, { query: { pubkey: b } }, env);
+    expect(res.status).toBe(403);
+    // grid は消えていないことを確認
+    const remaining = handle.sqlite
+      .prepare("SELECT COUNT(*) c FROM grids WHERE id = ?")
+      .get(id) as { c: number };
+    expect(remaining.c).toBe(1);
+  });
+
   it("DELETE /api/grids/:id は cells / plantings / crop_history も消す", async () => {
     const a = pubkeyHex("a");
     const id = makeGrid(handle.sqlite, a);
