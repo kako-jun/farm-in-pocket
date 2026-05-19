@@ -688,6 +688,35 @@ seed_products / materials は `affiliate_links: [{ shop, url }]` を持ちます
 - 検索結果カードには `UsageBadge` も併記され、「N人が使っています ／ M回記録されています」表示。0 件のときは「まだ記録なし」
 - 検索のデフォルトソートは `popular`（`use_count DESC, user_count DESC`）なので、利用実績の多いものが上に来ます
 
+## テスト
+
+各パッケージごとに vitest を採用。`pnpm -r test` でまとめて走らせる。
+
+| パッケージ | 件数 | 構成 |
+|---|---|---|
+| `packages/shared` | 179 | 純関数のユニット（環境: node） |
+| `apps/web` | 312 | React Testing Library + happy-dom + Astro Container API |
+| `apps/api` | 76 | **Hono ハンドラの統合テスト（Issue #87）** |
+
+### apps/api の統合テスト（Issue #87）
+
+Cloudflare D1 は Workers 内でしか動かないため、`better-sqlite3` を使った in-memory sqlite で
+D1Database 互換のラッパを作っている。
+
+- 入口: `apps/api/src/test/d1-mock.ts` …`:memory:` sqlite に `apps/api/migrations/*.sql` を sort 順で流し込み、`prepare(sql).bind(...).first()/.all()/.run()` の D1 互換 API を再現
+- ファクトリ: `apps/api/src/test/factory.ts` …profile / grid / cell / plant / planting / seed_product / material を直 INSERT する `make*` 系ヘルパと、Hono の Bindings を作る `mockEnv()`
+- リクエスト: `apps/api/src/test/helpers.ts` …`request(app, "POST", "/api/grids", { body })` で Hono の `app.fetch(req, env)` を in-process で叩く薄いラッパ。pubkey は seed から決定的に作れる `pubkeyHex("a")` で発行
+- 外部 API (Open-Meteo / Nostalgic Ranking) は `vi.stubGlobal("fetch", ...)` でモック化
+
+`better-sqlite3` は devDependencies なので、`wrangler deploy` のバンドルには含まれない（本番 Worker は本物の D1 を使う）。
+
+```bash
+# api だけテスト
+pnpm --filter @farm-in-pocket/api test
+# 監視モード
+pnpm --filter @farm-in-pocket/api test:watch
+```
+
 ## 設計参照
 
 詳細な設計メモはローカルの Agasteer 上にあります:

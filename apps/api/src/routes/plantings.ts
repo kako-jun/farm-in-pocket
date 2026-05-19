@@ -184,7 +184,7 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   }
 
   // Issue #22: crop_history に固定保存するため family を denormalize で取る。
-  // Issue #23: 同時に作物名（japanese_name）も先取りする。警告ペイロードに含める旧 plant 名は
+  // Issue #23: 同時に作物名も先取りする。警告ペイロードに含める旧 plant 名は
   // crop_history.plant_id 経由で JOIN で引くため、ここではこの planting で植える側の名前は持たない。
   const plant = await c.env.DB.prepare("SELECT id, family FROM plants WHERE id = ?")
     .bind(plantId)
@@ -196,8 +196,11 @@ createApp.post("/:gridId/cells/:x/:y/plantings", async (c) => {
   // ended_at が NULL の行（=今まさに植わっている）も対象に含めて良い: 同 family が継続中なら警告すべき。
   // ただし削除時の DELETE 経路で history は残るので、計算は planted_at を基準にする。
   // plant_name は plants 経由（JOIN）。plants 削除済みなら null になるが、その場合は family だけで警告できる。
+  // Issue #87 修正: 旧コードは p.japanese_name を参照していたが plants には name カラムしか存在せず、
+  // SQLite 上で prepare 時点で「no such column」エラーになる。本番 D1 はこのクエリ経路に到達する
+  // テストが無かったため気づかれなかった。
   const lastSameFamily = await c.env.DB.prepare(
-    `SELECT ch.planted_at AS planted_at, p.japanese_name AS plant_name
+    `SELECT ch.planted_at AS planted_at, p.name AS plant_name
        FROM crop_history ch
        LEFT JOIN plants p ON p.id = ch.plant_id
       WHERE ch.grid_id = ?
