@@ -10,18 +10,22 @@
 import react from "@astrojs/react";
 import { getViteConfig } from "astro/config";
 
-export default getViteConfig(
-  {
-    test: {
-      environment: "happy-dom",
-      globals: true,
-      include: ["src/**/*.test.{ts,tsx}"],
-      setupFiles: ["./src/test-setup.ts"],
-    },
+// Issue #87 メモ: apps/api に @types/better-sqlite3 を入れた副作用で vite 7 へ chain が
+// 切り替わり、`getViteConfig` の第一引数の UserConfig 型に `test` が含まれないと
+// TS が怒るようになった。vitest 側のフィールドは実行時には素通しされるため、第一引数を
+// any 経由で渡してフィールド名のチェックを緩める。
+// biome-ignore lint/suspicious/noExplicitAny: vitest フィールドを astro UserConfig に注入するためのキャスト
+const viteTestConfig: any = {
+  test: {
+    environment: "happy-dom",
+    globals: true,
+    include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["./src/test-setup.ts"],
   },
-  {
-    // astro inline config: 本番 astro.config.mjs を全部引き込むと Cloudflare adapter まで
-    // 走ってテストが重くなるので、ここでは最小構成の integrations のみ渡す。
-    integrations: [react()],
-  },
-);
+};
+
+export default getViteConfig(viteTestConfig, {
+  // astro inline config: 本番 astro.config.mjs を全部引き込むと Cloudflare adapter まで
+  // 走ってテストが重くなるので、ここでは最小構成の integrations のみ渡す。
+  integrations: [react()],
+});
