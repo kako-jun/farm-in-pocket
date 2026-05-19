@@ -254,11 +254,63 @@ describe("grid-api", () => {
     expect(result.rotationWarning?.family).toBe("ナス科");
   });
 
-  it("deletePlanting は DELETE /api/plantings/:id?pubkey= を叩く", async () => {
-    mockFetch({ ok: true });
-    await deletePlanting(42, "pk");
+  it("deletePlanting は DELETE /api/plantings/:id?pubkey= を叩いて soft delete された planting を返す (Issue #86)", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 42,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: null,
+        state: "ended",
+        seedingDate: "2026-05-01",
+        germinationDate: null,
+        plantingDate: null,
+        endDate: "2026-05-19",
+        endTag: "removed",
+        seedingDepthCm: null,
+        plantSpacingCm: null,
+        rowSpacingCm: null,
+        failureMemo: null,
+        note: null,
+      },
+    });
+    const updated = await deletePlanting(42, "pk");
     expect(first().url).toBe("/api/plantings/42?pubkey=pk");
     expect(first().init?.method).toBe("DELETE");
+    // endTag 未指定なら body は付かない（API 側のデフォルト 'removed' が効く）
+    expect(first().init?.body).toBeUndefined();
+    expect(updated.state).toBe("ended");
+    expect(updated.endTag).toBe("removed");
+  });
+
+  it("deletePlanting に明示的 endTag を渡すと body に乗る (Issue #86)", async () => {
+    mockFetch({
+      ok: true,
+      planting: {
+        id: 42,
+        cellId: 11,
+        plantId: 1,
+        seedProductId: null,
+        state: "ended",
+        seedingDate: "2026-05-01",
+        germinationDate: null,
+        plantingDate: null,
+        endDate: "2026-05-19",
+        endTag: "died",
+        seedingDepthCm: null,
+        plantSpacingCm: null,
+        rowSpacingCm: null,
+        failureMemo: null,
+        note: null,
+      },
+    });
+    const updated = await deletePlanting(42, "pk", "died");
+    expect(first().url).toBe("/api/plantings/42?pubkey=pk");
+    expect(first().init?.method).toBe("DELETE");
+    const body = JSON.parse(String(first().init?.body));
+    expect(body).toEqual({ endTag: "died" });
+    expect(updated.endTag).toBe("died");
   });
 
   // -------------------------------------------------------------------------

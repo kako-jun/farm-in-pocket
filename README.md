@@ -197,12 +197,13 @@ plants.tags（JSON 配列）に「春まき / 春植え / 春先 / 夏野菜 / �
   - **失敗メモ**: 終了モーダルの自由入力欄。「水切れさせた」「夏越し失敗」のようなふりかえりを残すため。
   - `state=ended` に遷移すると、`end_date` 省略時は API 側で今日が入り、対応する `crop_history.ended_at` も同じ日付で埋まる。連作判定はこの履歴を見ている。
   - `state` を `planted` / `growing` に戻すと `end_tag` / `end_date` / `failure_memo` は NULL リセットされる。
-  - **削除より終了を優先**: `DELETE /api/plantings/:id` は物理削除のまま残しているが、UI 上は「終了する」ボタンを推奨。終了状態で残せば連作判断材料が増える。
+  - **削除より終了を優先**: UI 上は「終了する」ボタンを推奨。終了状態で残せば連作判断材料が増える。
+  - **DELETE は soft delete**（Issue #86）: `DELETE /api/plantings/:id` は物理削除しません。`state='ended'` + `end_date=today` + `end_tag='removed'`（既定）に切り替えるだけです。`?endTag=died` 等で上書きもできます。レスポンスは `{ ok: true, planting }` で更新後の `PlantingRecord` を返します。**履歴は残ります**（連作判定・振り返り用）。
 - **サイズ変更**: グリッドの size_x / size_y を変えると「過去の連作履歴との対応がリセットされます」確認ダイアログが出る（座標ベースで履歴管理しているため）。
 - **連作履歴の座標ベース管理**（Issue #22）。`crop_history` テーブルは `cell_id` ではなく **`grid_id + x + y`** で履歴を保持します。畝の区切りを変えても、同じ座標であれば養分・病気の偏りを追えます。
   - 履歴行の `plant_family` は **植えた時点の値を凍結**保存（denormalize）。`plants` マスタを後から削除/改名しても過去の科分類は壊れません。
   - 新しい planting を植えると、前 planting の crop_history は `ended_at = date('now')` で閉じられ、新規行が INSERT されます。
-  - `DELETE /api/plantings/:id` は planting 自体は物理削除しますが、**crop_history は残します**（座標の連作判断材料として必要）。`ended_at` だけ `date('now')` で埋めます。
+  - `DELETE /api/plantings/:id` は planting を **物理削除しません**（Issue #86）。`state='ended'` + `end_tag='removed'`（既定）に切り替えるだけで、**planting も crop_history も残します**。crop_history の `ended_at` は `date('now')` で埋めます。
   - グリッドの `size_x` / `size_y` を変えると「過去の連作履歴との対応がリセットされます」の確認ダイアログが出ます。座標が変わるため履歴の意味が崩れるからです。
 - **連作障害警告**（Issue #23）。新しい planting を作るとき、同じ座標 (grid_id, x, y) の `crop_history` に**同じ科**の最新行があれば、推奨待機年数と比較して警告を出します。
   - 推奨待機年数の参考値（`packages/shared/src/farm.ts` の `ROTATION_WAIT_YEARS`）:
@@ -320,7 +321,7 @@ NIP-98 認可は未実装。`pubkey` をクエリ/body で受ける Phase 1 範�
 - `GET    /api/plants/:id/seed-products` — その plant_id に紐付く種・苗マスタを人気順で返す（Issue #38）
 - `GET    /api/plants/:id/users` — その plant_id を育てている／いたユーザー（pubkey / plantingCount / lastPlantedAt）を返す（Issue #38）
 - `POST   /api/grids/:gridId/cells/:x/:y/plantings` — 作物を植える
-- `DELETE /api/plantings/:id` — 撤去（cells.current_planting_id を NULL に戻す）
+- `DELETE /api/plantings/:id` — soft delete（`state='ended'` + `end_tag='removed'` 既定、`?endTag=died` 等で上書き可）。cells.current_planting_id を NULL に戻し、planting / crop_history は残す（Issue #86）
 - `POST   /api/grids/:gridId/cells/:x/:y/nutrient` — 施肥記録（Issue #15）
 - `POST   /api/grids/:gridId/cells/:x/:y/pesticide` — 農薬記録（Issue #15）
 - `GET    /api/grids/:gridId/cells/:x/:y/records?pubkey=<hex64>` — 直近の施肥/農薬を各 10 件返す（Issue #15）

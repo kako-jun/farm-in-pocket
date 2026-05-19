@@ -306,10 +306,27 @@ export async function createPlanting(
   };
 }
 
-export async function deletePlanting(id: number, pubkey: string): Promise<void> {
-  await jsonFetch<{ ok: true }>(url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`), {
-    method: "DELETE",
-  });
+/**
+ * Issue #86: planting を soft delete する。
+ * - API 側で `state='ended'` + `end_date=today` + `end_tag` に切り替わる（物理削除しない）。
+ * - `endTag` 省略時の既定値は API 側の `'removed'`（「抜いた」）。
+ *   明示的に `died` / `disease` 等を渡したいときは引数で指定する。
+ * - 戻り値の `planting` は更新後の `PlantingRecord`。
+ *   旧呼び出し側で戻り値を無視している箇所は破壊的変更なし。
+ */
+export async function deletePlanting(
+  id: number,
+  pubkey: string,
+  endTag?: PlantingEndTag,
+): Promise<PlantingRecord> {
+  const data = await jsonFetch<{ ok: true; planting: PlantingRecord }>(
+    url(`/api/plantings/${id}?pubkey=${encodeURIComponent(pubkey)}`),
+    {
+      method: "DELETE",
+      ...(endTag ? { body: JSON.stringify({ endTag }) } : {}),
+    },
+  );
+  return data.planting;
 }
 
 /**
