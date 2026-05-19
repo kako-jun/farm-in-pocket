@@ -539,6 +539,10 @@ itemApp.patch("/:id", async (c) => {
 // 既に state='ended' のものを再度 DELETE しても冪等（end_date / end_tag は上書き）。
 // 旧クライアントとの互換: end_tag を明示しなければ 'removed' になるだけで、レスポンス形は
 // `{ ok: true, planting }` に拡張されたが既存呼び出しは `ok` だけ見ていれば壊れない。
+//
+// PR #88 retro A4: failure_memo は touch しない（既存値を保持）。
+// 「抜いた理由 = 失敗メモ」とは限らない（収穫後の片付け removed や端末誤操作も含むため）。
+// 失敗メモは PATCH /api/plantings/:id 経由でユーザーが明示的に書き換える設計を維持する。
 itemApp.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {

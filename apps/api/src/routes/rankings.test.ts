@@ -28,6 +28,9 @@ beforeEach(() => {
 
 afterEach(() => {
   handle.close();
+  // PR #89 retro B3: vi.stubGlobal('fetch', ...) は restoreAllMocks では戻らないため、
+  // unstubAllGlobals を併用して fetch のグローバル差し替えを次テストに残さない。
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
