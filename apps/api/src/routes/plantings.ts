@@ -524,24 +524,64 @@ itemApp.patch("/:id", async (c) => {
   return c.json({ ok: true, planting: toPlantingRecord(updated) });
 });
 
-// DELETE /api/plantings/:id?pubkey=<hex64>
-// NOTE: 当面は物理削除を維持する（破壊的変更回避）。state='ended' で論理削除に切り替える案は
-// 別 Issue 化予定（kako-jun/farm-in-pocket#13 レビュー SHOULD #5）。
-// Issue #29 では UI 側で「終了する」（PATCH state=ended）を推奨し、DELETE は据え置き。
-//
-// Issue #22: planting 自体は物理削除するが、crop_history は残す（連作管理の正本のため）。
-// 対応する crop_history は ended_at を date('now') にだけ更新する。
+// DELETE /api/plantings/:id?pubkey=<hex64>&endTag=removed
+// Issue #86: 物理削除ではなく soft delete（state='ended' + end_tag への切り替え）に変更。
+// 履歴は残し、連作判定や振り返りのデータ源として保持する。
+//   * state = 'ended'
+//   * end_date = date('now')
+//   * end_tag = クエリ ?endTag=... または body.endTag。既定値は 'removed'（「抜いた」）。
+//   * updated_at = datetime('now')
+//   * cells.current_planting_id を NULL に
+//   * crop_history.ended_at を date('now') に（既存挙動を維持）
+// 既に state='ended' のものを再度 DELETE しても冪等（end_date / end_tag は上書き）。
+// 旧クライアントとの互換: end_tag を明示しなければ 'removed' になるだけで、レスポンス形は
+// `{ ok: true, planting }` に拡張されたが既存呼び出しは `ok` だけ見ていれば壊れない。
 itemApp.delete("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {
     return c.json({ error: "invalid id" }, 400);
   }
 
+  // endTag は ?endTag=... と body.endTag の両方を許す（fetch DELETE は body を持てる）。
+  // body はあってもなくても OK。JSON でなければ無視。
+  let bodyEndTag: unknown = undefined;
+  try {
+    const raw = await c.req.text();
+    if (raw && raw.length > 0) {
+      const parsed = JSON.parse(raw) as { endTag?: unknown };
+      bodyEndTag = parsed?.endTag;
+    }
+  } catch {
+    // body 無し / 非 JSON は許容
+  }
+  const queryEndTag = c.req.query("endTag");
+  const rawEndTag: unknown = bodyEndTag !== undefined ? bodyEndTag : queryEndTag;
+
+  let endTag: PlantingEndTag = "removed";
+  if (typeof rawEndTag === "string" && rawEndTag.length > 0) {
+    if (!VALID_END_TAGS.includes(rawEndTag as PlantingEndTag)) {
+      return c.json({ error: "invalid endTag" }, 400);
+    }
+    endTag = rawEndTag as PlantingEndTag;
+  }
+
   const auth = await requirePlantingOwner(c.env.DB, id, c.req.query("pubkey"));
   if (!auth.ok) return c.json({ error: auth.error }, auth.status);
   const cellId = auth.cellId ?? null;
 
-  // 対応する crop_history の ended_at を埋める前に、cell の grid_id / x / y を取る。
+  // state=ended に soft delete する。end_date / end_tag / updated_at を埋める。
+  await c.env.DB.prepare(
+    `UPDATE plantings
+        SET state = 'ended',
+            end_date = date('now'),
+            end_tag = ?,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+  )
+    .bind(endTag, id)
+    .run();
+
+  // 対応する crop_history の ended_at を埋める。
   // history は座標ベース管理のため、planting からは cell を経由して座標を得る。
   if (cellId != null) {
     const cellRow = await c.env.DB.prepare("SELECT grid_id, x, y FROM cells WHERE id = ?")
@@ -558,14 +598,22 @@ itemApp.delete("/:id", async (c) => {
     }
   }
 
+  // cells.current_planting_id を NULL に戻す（次の植え付けで上書きされる）。
   await c.env.DB.prepare(
     `UPDATE cells SET current_planting_id = NULL, updated_at = datetime('now')
       WHERE id = ? AND current_planting_id = ?`,
   )
     .bind(cellId, id)
     .run();
-  await c.env.DB.prepare("DELETE FROM plantings WHERE id = ?").bind(id).run();
-  return c.json({ ok: true });
+
+  // 更新後の planting を返す（PATCH ハンドラと同じ形）。
+  const updated = await c.env.DB.prepare(
+    `SELECT ${PLANTING_SELECT_FIELDS} ${PLANTING_FROM_JOIN} WHERE pl.id = ?`,
+  )
+    .bind(id)
+    .first<PlantingRow>();
+  if (!updated) return c.json({ error: "vanished" }, 500);
+  return c.json({ ok: true, planting: toPlantingRecord(updated) });
 });
 
 export { createApp as plantingsCreateRouter, itemApp as plantingsItemRouter };
